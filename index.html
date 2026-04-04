@@ -76,10 +76,10 @@ body{margin:0;font-family:Arial;background:#f1f1f1}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// ============== 填写你自己的 ==============
-const SUPABASE_URL = "你的URL"
-const SUPABASE_KEY = "你的anon key"
-// ==========================================
+// ============== 已填好你的 Supabase 配置 ==============
+const SUPABASE_URL = "https://hlhtcciaafwmxxtshtaa.supabase.co"
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsaHRjY2lhYWZ3bXh4dHNodGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMDcyOTcsImV4cCI6MjA5MDg4MzI5N30.cn6RJt_0xXp54n2NvqMq0mFYwBVmdO6Q2NGdnwZicoU"
+// =====================================================
 
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
 
@@ -144,10 +144,13 @@ async function checkRequests(){
 
 async function acceptRequest(id){
   await supabase.from("friend_requests").update({status:"accepted"}).eq("id",id)
+  loadFriends() // 同意后刷新好友列表
+  alert("已同意好友申请！")
 }
 
 async function rejectRequest(id){
   await supabase.from("friend_requests").update({status:"rejected"}).eq("id",id)
+  alert("已拒绝好友申请！")
 }
 
 // 加载好友
