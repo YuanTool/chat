@@ -77,139 +77,239 @@ body{margin:0;font-family:Arial;background:#f1f1f1}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 // ============== 已填好你的 Supabase 配置 ==============
-const SUPABASE_URL = "https://hlhtcciaafwmxxtshtaa.supabase.co"
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsaHRjY2lhYWZ3bXh4dHNodGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMDcyOTcsImV4cCI6MjA5MDg4MzI5N30.cn6RJt_0xXp54n2NvqMq0mFYwBVmdO6Q2NGdnwZicoU"
+const SUPABASE_URL = "https://hlhtcciaafwmxxtshtaa.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsaHRjY2lhYWZ3bXh4dHNodGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMDcyOTcsImV4cCI6MjA5MDg4MzI5N30.cn6RJt_0xXp54n2NvqMq0mFYwBVmdO6Q2NGdnwZicoU";
 // =====================================================
 
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+// 初始化Supabase客户端（仅声明一次，修复重复声明问题）
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-let myId = ""
-let currentChatId = ""
+let myId = "";
+let currentChatId = "";
 
-// 生成随机ID
-function randomId(){
-  return Math.random().toString(36).substring(2,10)
+// 生成8位随机ID（字母+数字）
+function randomId() {
+  return Math.random().toString(36).substring(2, 10);
 }
 
-// 初始化
-window.onload = async ()=>{
-  myId = randomId()
-  document.getElementById("myId").innerText = myId
-  await supabase.from("users").insert([{id:myId}])
-  loadFriends()
-  checkRequests()
-  setInterval(loadMessages,1000)
-  setInterval(checkRequests,2000)
+// 页面加载初始化
+window.onload = async function() {
+  try {
+    myId = randomId();
+    document.getElementById("myId").innerText = myId;
+    // 插入临时用户记录
+    await supabaseClient.from("users").insert([{id: myId}]);
+    // 初始化加载好友和检查申请
+    loadFriends();
+    checkRequests();
+    // 定时刷新消息和申请（实时更新）
+    setInterval(loadMessages, 1000);
+    setInterval(checkRequests, 2000);
+  } catch (e) {
+    console.error("初始化失败：", e);
+    alert("初始化失败，请检查Supabase配置！");
+  }
+};
+
+// 手机端切换侧边栏显示/隐藏
+function toggleSidebar() {
+  document.getElementById("sidebar").classList.toggle("show");
 }
 
-// 手机侧边栏
-function toggleSidebar(){
-  document.getElementById("sidebar").classList.toggle("show")
+// 显示添加好友弹窗
+function showAddFriend() {
+  const targetId = prompt("请输入对方的临时ID：");
+  if (!targetId || targetId === myId) {
+    alert("ID不能为空或不能是自己的ID！");
+    return;
+  }
+  addFriendRequest(targetId);
 }
 
-// 添加好友
-function showAddFriend(){
-  const target = prompt("输入对方临时ID：")
-  if(!target || target === myId) return
-  addFriendRequest(target)
-}
-
-async function addFriendRequest(target){
-  await supabase.from("friend_requests").insert([{from_id:myId,to_id:target}])
-  alert("已发送申请")
-}
-
-// 检查申请
-async function checkRequests(){
-  const {data} = await supabase
-    .from("friend_requests")
-    .select("*").eq("to_id",myId).eq("status","pending")
-
-  const box = document.getElementById("requestBox")
-  if(box) box.remove()
-
-  if(data && data.length>0){
-    const d = data[0]
-    const div = document.createElement("div")
-    div.id = "requestBox"
-    div.className = "request"
-    div.innerHTML = `
-      ${d.from_id} 请求加好友
-      <button onclick="acceptRequest(${d.id})">同意</button>
-      <button onclick="rejectRequest(${d.id})">拒绝</button>
-    `
-    document.body.appendChild(div)
+// 发送好友申请
+async function addFriendRequest(targetId) {
+  try {
+    await supabaseClient.from("friend_requests").insert([{
+      from_id: myId,
+      to_id: targetId,
+      status: "pending"
+    }]);
+    alert("好友申请已发送！");
+  } catch (e) {
+    console.error("发送申请失败：", e);
+    alert("发送申请失败，请重试！");
   }
 }
 
-async function acceptRequest(id){
-  await supabase.from("friend_requests").update({status:"accepted"}).eq("id",id)
-  loadFriends() // 同意后刷新好友列表
-  alert("已同意好友申请！")
-}
+// 检查未处理的好友申请
+async function checkRequests() {
+  try {
+    const { data, error } = await supabaseClient
+      .from("friend_requests")
+      .select("*")
+      .eq("to_id", myId)
+      .eq("status", "pending");
 
-async function rejectRequest(id){
-  await supabase.from("friend_requests").update({status:"rejected"}).eq("id",id)
-  alert("已拒绝好友申请！")
-}
+    if (error) throw error;
 
-// 加载好友
-async function loadFriends(){
-  const {data} = await supabase
-    .from("friend_requests")
-    .select("from_id,to_id")
-    .or(`from_id.eq.${myId},to_id.eq.${myId}`)
-    .eq("status","accepted")
+    // 移除旧的申请弹窗
+    const oldRequestBox = document.getElementById("requestBox");
+    if (oldRequestBox) oldRequestBox.remove();
 
-  const list = document.getElementById("friendList")
-  list.innerHTML = ""
-
-  const friends = data.map(r=> r.from_id === myId ? r.to_id : r.from_id)
-  const unique = [...new Set(friends)]
-
-  unique.forEach(f=>{
-    const div = document.createElement("div")
-    div.className = "friend"
-    div.innerText = f
-    div.onclick = ()=>{
-      currentChatId = f
-      document.getElementById("chatTitle").innerText = "和 "+f+" 聊天中"
-      loadMessages()
-      toggleSidebar()
+    // 显示新的申请弹窗（只显示第一条）
+    if (data && data.length > 0) {
+      const request = data[0];
+      const requestBox = document.createElement("div");
+      requestBox.id = "requestBox";
+      requestBox.className = "request";
+      requestBox.innerHTML = `
+        <span>${request.from_id} 请求添加你为好友</span>
+        <button onclick="acceptRequest(${request.id})">同意</button>
+        <button onclick="rejectRequest(${request.id})">拒绝</button>
+      `;
+      document.body.appendChild(requestBox);
     }
-    list.appendChild(div)
-  })
+  } catch (e) {
+    console.error("检查好友申请失败：", e);
+  }
 }
 
-// 发送消息
-async function sendMessage(){
-  const content = document.getElementById("msgInput").value.trim()
-  if(!content || !currentChatId) return
-  await supabase.from("messages").insert([{
-    from_id:myId, to_id:currentChatId, content
-  }])
-  document.getElementById("msgInput").value = ""
-  loadMessages()
+// 同意好友申请
+async function acceptRequest(requestId) {
+  try {
+    await supabaseClient.from("friend_requests")
+      .update({ status: "accepted" })
+      .eq("id", requestId);
+    // 移除申请弹窗并刷新好友列表
+    document.getElementById("requestBox")?.remove();
+    loadFriends();
+    alert("已同意好友申请！");
+  } catch (e) {
+    console.error("同意申请失败：", e);
+    alert("同意申请失败，请重试！");
+  }
 }
 
-// 加载消息
-async function loadMessages(){
-  if(!currentChatId) return
-  const {data} = await supabase
-    .from("messages")
-    .select("*")
-    .or(`and(from_id.eq.${myId},to_id.eq.${currentChatId}),and(from_id.eq.${currentChatId},to_id.eq.${myId})`)
-    .order("created_at",{ascending:true})
+// 拒绝好友申请
+async function rejectRequest(requestId) {
+  try {
+    await supabaseClient.from("friend_requests")
+      .update({ status: "rejected" })
+      .eq("id", requestId);
+    // 移除申请弹窗
+    document.getElementById("requestBox")?.remove();
+    alert("已拒绝好友申请！");
+  } catch (e) {
+    console.error("拒绝申请失败：", e);
+    alert("拒绝申请失败，请重试！");
+  }
+}
 
-  const box = document.getElementById("messages")
-  box.innerHTML = ""
-  data.forEach(m=>{
-    const div = document.createElement("div")
-    div.className = "msg "+(m.from_id === myId ? "me" : "other")
-    div.innerText = m.content
-    box.appendChild(div)
-  })
-  box.scrollTop = box.scrollHeight
+// 加载已同意的好友列表
+async function loadFriends() {
+  try {
+    const { data, error } = await supabaseClient
+      .from("friend_requests")
+      .select("from_id,to_id")
+      .or(`from_id.eq.${myId},to_id.eq.${myId}`)
+      .eq("status", "accepted");
+
+    if (error) throw error;
+
+    const friendList = document.getElementById("friendList");
+    friendList.innerHTML = "";
+
+    // 提取好友ID并去重
+    const friendIds = [];
+    data.forEach(item => {
+      const friendId = item.from_id === myId ? item.to_id : item.from_id;
+      if (!friendIds.includes(friendId)) friendIds.push(friendId);
+    });
+
+    // 渲染好友列表
+    friendIds.forEach(friendId => {
+      const friendItem = document.createElement("div");
+      friendItem.className = "friend";
+      friendItem.innerText = friendId;
+      friendItem.onclick = function() {
+        currentChatId = friendId;
+        document.getElementById("chatTitle").innerText = `和 ${friendId} 聊天中`;
+        loadMessages();
+        // 手机端点击好友后收起侧边栏
+        if (window.innerWidth <= 600) {
+          toggleSidebar();
+        }
+      };
+      friendList.appendChild(friendItem);
+    });
+
+    // 无好友提示
+    if (friendIds.length === 0) {
+      friendList.innerHTML = "<div style='color:#999;padding:10px'>暂无好友，添加好友后显示</div>";
+    }
+  } catch (e) {
+    console.error("加载好友列表失败：", e);
+  }
+}
+
+// 发送聊天消息
+async function sendMessage() {
+  try {
+    const msgContent = document.getElementById("msgInput").value.trim();
+    if (!msgContent) {
+      alert("消息不能为空！");
+      return;
+    }
+    if (!currentChatId) {
+      alert("请先选择要聊天的好友！");
+      return;
+    }
+
+    // 插入消息到数据库
+    await supabaseClient.from("messages").insert([{
+      from_id: myId,
+      to_id: currentChatId,
+      content: msgContent
+    }]);
+
+    // 清空输入框并刷新消息
+    document.getElementById("msgInput").value = "";
+    loadMessages();
+  } catch (e) {
+    console.error("发送消息失败：", e);
+    alert("发送消息失败，请重试！");
+  }
+}
+
+// 加载聊天消息
+async function loadMessages() {
+  try {
+    if (!currentChatId) return;
+
+    const { data, error } = await supabaseClient
+      .from("messages")
+      .select("*")
+      .or(`and(from_id.eq.${myId},to_id.eq.${currentChatId}),and(from_id.eq.${currentChatId},to_id.eq.${myId})`)
+      .order("created_at", { ascending: true });
+
+    if (error) throw error;
+
+    const messagesContainer = document.getElementById("messages");
+    messagesContainer.innerHTML = "";
+
+    // 渲染消息
+    data.forEach(msg => {
+      const msgItem = document.createElement("div");
+      msgItem.className = `msg ${msg.from_id === myId ? "me" : "other"}`;
+      msgItem.innerText = msg.content;
+      messagesContainer.appendChild(msgItem);
+    });
+
+    // 滚动到最新消息
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  } catch (e) {
+    console.error("加载消息失败：", e);
+  }
 }
 </script>
 </body>
