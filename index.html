@@ -143,14 +143,17 @@ const SUPABASE_URL = "https://hlhtcciaafwmxxtshtaa.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsaHRjY2lhYWZ3bXh4dHNodGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMDcyOTcsImV4cCI6MjA5MDg4MzI5N30.cn6RJt_0xXp54n2NvqMq0mFYwBVmdO6Q2NGdnwZicoU";
 
 // ========== 全局变量 ==========
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-let myId = "";          // 当前用户ID（刷新不丢，关闭页面失效）
-let currentChatId = ""; // 当前聊天的好友ID
+let supabaseClient = null;     // Supabase客户端（避免重复声明）
+let myId = "";                // 当前用户ID（刷新不丢，关闭页面失效）
+let currentChatId = "";       // 当前聊天的好友ID
 let requestListVisible = false; // 好友申请列表是否显示
 
 // ========== 初始化（核心：刷新页面保留ID） ==========
 async function initApp() {
   try {
+    // 初始化Supabase客户端（仅一次）
+    supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
     // 优先从sessionStorage获取ID（刷新页面保留），无则生成新ID
     myId = sessionStorage.getItem("tempChatId") || generateRandomId();
     sessionStorage.setItem("tempChatId", myId); // 存入本地存储
@@ -189,7 +192,7 @@ function generateRandomId() {
 
 // ========== 核心功能：保存用户ID到数据库 ==========
 async function saveUserToDB() {
-  const { error } = await supabase
+  const { error } = await supabaseClient
     .from("users")
     .upsert([{ id: myId }]); // 存在则更新，不存在则插入
   if (error) console.error("保存用户ID失败：", error);
@@ -197,8 +200,11 @@ async function saveUserToDB() {
 
 // ========== 核心功能：实时订阅（消息/申请实时更新） ==========
 function subscribeToRealTimeUpdates() {
+  // 先取消旧的订阅（避免重复）
+  supabaseClient.removeAllChannels();
+
   // 1. 实时订阅好友申请变化
-  supabase.channel("friend_requests")
+  supabaseClient.channel("friend_requests")
     .on("postgres_changes", {
       event: "*",
       schema: "public",
@@ -208,7 +214,7 @@ function subscribeToRealTimeUpdates() {
     .subscribe();
 
   // 2. 实时订阅好友列表变化
-  supabase.channel("friend_list")
+  supabaseClient.channel("friend_list")
     .on("postgres_changes", {
       event: "*",
       schema: "public",
@@ -217,15 +223,17 @@ function subscribeToRealTimeUpdates() {
     }, () => loadFriendList())
     .subscribe();
 
-  // 3. 实时订阅聊天消息变化
-  supabase.channel("messages")
-    .on("postgres_changes", {
-      event: "*",
-      schema: "public",
-      table: "messages",
-      filter: `or(and(from_id=eq.${myId},to_id=eq.${currentChatId}),and(from_id=eq.${currentChatId},to_id=eq.${myId}))`
-    }, () => loadChatMessages())
-    .subscribe();
+  // 3. 实时订阅聊天消息变化（仅当选择好友后）
+  if (currentChatId) {
+    supabaseClient.channel("messages")
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "messages",
+        filter: `or(and(from_id=eq.${myId},to_id=eq.${currentChatId}),and(from_id=eq.${currentChatId},to_id=eq.${myId}))`
+      }, () => loadChatMessages())
+      .subscribe();
+  }
 }
 
 // ========== 侧边栏：切换显示/隐藏（手机端） ==========
@@ -233,7 +241,7 @@ function toggleSidebar() {
   document.getElementById("sidebar").classList.toggle("show");
 }
 
-// ========== 好友功能：添加好友 ==========
+// ========== 好友功能：添加好友（修复函数名拼写错误） ==========
 function showAddFriendModal() {
   const targetId = prompt("请输入对方的临时ID：");
   if (!targetId || targetId === myId) {
@@ -246,7 +254,7 @@ function showAddFriendModal() {
 async function sendFriendRequest(targetId) {
   try {
     // 检查是否已发送过申请
-    const { data: existingRequest } = await supabase
+    const { data: existingRequest } = await supabaseClient
       .from("friend_requests")
       .select("*")
       .eq("from_id", myId)
@@ -259,7 +267,7 @@ async function sendFriendRequest(targetId) {
     }
 
     // 发送申请
-    const { error } = await supabase
+    const { error } = await supabaseClient
       .from("friend_requests")
       .insert([{
         from_id: myId,
@@ -293,7 +301,7 @@ function toggleRequestList() {
 // ========== 好友功能：加载好友申请列表 ==========
 async function loadFriendRequests() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from("friend_requests")
       .select("*")
       .eq("to_id", myId)
@@ -323,7 +331,7 @@ async function loadFriendRequests() {
 // ========== 好友功能：同意好友申请 ==========
 async function acceptFriendRequest(requestId) {
   try {
-    const { error } = await supabase
+    const { error } = await supabaseClient
       .from("friend_requests")
       .update({ status: "accepted" })
       .eq("id", requestId);
@@ -341,7 +349,7 @@ async function acceptFriendRequest(requestId) {
 // ========== 好友功能：拒绝好友申请 ==========
 async function rejectFriendRequest(requestId) {
   try {
-    const { error } = await supabase
+    const { error } = await supabaseClient
       .from("friend_requests")
       .update({ status: "rejected" })
       .eq("id", requestId);
@@ -358,7 +366,7 @@ async function rejectFriendRequest(requestId) {
 // ========== 好友功能：加载好友列表 ==========
 async function loadFriendList() {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from("friend_requests")
       .select("from_id,to_id")
       .or(`from_id=eq.${myId},to_id=eq.${myId}`)
@@ -419,7 +427,7 @@ async function sendMessage() {
     }
 
     // 发送消息到数据库
-    const { error } = await supabase
+    const { error } = await supabaseClient
       .from("messages")
       .insert([{
         from_id: myId,
@@ -443,7 +451,7 @@ async function loadChatMessages() {
   try {
     if (!currentChatId) return;
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClient
       .from("messages")
       .select("*")
       .or(`and(from_id=eq.${myId},to_id=eq.${currentChatId}),and(from_id=eq.${currentChatId},to_id=eq.${myId})`)
