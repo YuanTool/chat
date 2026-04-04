@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>临时ID聊天</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial;background:#f1f1f1}
+.container{display:flex;height:100vh;max-width:1000px;margin:0 auto}
+
+/* 侧边栏 */
+.sidebar{
+  width:280px;background:white;border-right:1px solid #ddd;
+  padding:15px;position:relative;
+}
+.hamburger{
+  display:none;font-size:22px;background:none;border:none;
+  position:fixed;top:10px;left:10px;z-index:10;background:white;padding:5px 10px;border-radius:5px;
+}
+@media (max-width:600px){
+  .sidebar{display:none;width:100%;position:fixed;height:100vh;z-index:9}
+  .sidebar.show{display:block}
+  .hamburger{display:block}
+}
+
+.title{font-weight:bold;margin-bottom:10px;}
+.my-id{padding:8px;background:#eef;padding:10px;border-radius:6px;margin:10px 0}
+.btn{background:#4F46E5;color:white;border:none;padding:8px 12px;border-radius:6px;margin:5px 0;width:100%}
+.friend{padding:10px;background:#f9f9f9;margin:5px 0;border-radius:6px;cursor:pointer}
+.friend.active{background:#d7e3ff}
+
+/* 聊天区 */
+.chat{flex:1;display:flex;flex-direction:column;background:white}
+.chat-header{padding:15px;border-bottom:1px solid #ddd}
+.messages{flex:1;padding:15px;overflow-y:auto}
+.msg{margin:8px 0;padding:10px;border-radius:8px;max-width:70%}
+.msg.me{background:#4F46E5;color:white;margin-left:auto}
+.msg.other{background:#eee;margin-right:auto}
+.input-area{display:flex;padding:10px;border-top:1px solid #ddd}
+.input-area input{flex:1;padding:10px;border-radius:6px;border:1px solid #ddd}
+.input-area button{margin-left:5px}
+
+/* 好友申请 */
+.request{
+  position:fixed;bottom:0;left:0;right:0;
+  background:white;padding:12px;border-top:1px solid #ddd;
+  display:flex;gap:10px;align-items:center
+}
+.request button{padding:6px 10px}
+</style>
+</head>
+
+<body>
+<button class="hamburger" onclick="toggleSidebar()">☰</button>
+
+<div class="container">
+  <div class="sidebar" id="sidebar">
+    <div class="title">我的临时ID</div>
+    <div class="my-id" id="myId">加载中...</div>
+    <button class="btn" onclick="showAddFriend()">➕ 添加好友</button>
+
+    <div class="title" style="margin-top:20px">好友列表</div>
+    <div id="friendList"></div>
+  </div>
+
+  <div class="chat">
+    <div class="chat-header" id="chatTitle">选择好友聊天</div>
+    <div class="messages" id="messages"></div>
+    <div class="input-area">
+      <input id="msgInput" placeholder="输入消息...">
+      <button class="btn" onclick="sendMessage()">发送</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+// ============== 填写你自己的 ==============
+const SUPABASE_URL = "你的URL"
+const SUPABASE_KEY = "你的anon key"
+// ==========================================
+
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+let myId = ""
+let currentChatId = ""
+
+// 生成随机ID
+function randomId(){
+  return Math.random().toString(36).substring(2,10)
+}
+
+// 初始化
+window.onload = async ()=>{
+  myId = randomId()
+  document.getElementById("myId").innerText = myId
+  await supabase.from("users").insert([{id:myId}])
+  loadFriends()
+  checkRequests()
+  setInterval(loadMessages,1000)
+  setInterval(checkRequests,2000)
+}
+
+// 手机侧边栏
+function toggleSidebar(){
+  document.getElementById("sidebar").classList.toggle("show")
+}
+
+// 添加好友
+function showAddFriend(){
+  const target = prompt("输入对方临时ID：")
+  if(!target || target === myId) return
+  addFriendRequest(target)
+}
+
+async function addFriendRequest(target){
+  await supabase.from("friend_requests").insert([{from_id:myId,to_id:target}])
+  alert("已发送申请")
+}
+
+// 检查申请
+async function checkRequests(){
+  const {data} = await supabase
+    .from("friend_requests")
+    .select("*").eq("to_id",myId).eq("status","pending")
+
+  const box = document.getElementById("requestBox")
+  if(box) box.remove()
+
+  if(data && data.length>0){
+    const d = data[0]
+    const div = document.createElement("div")
+    div.id = "requestBox"
+    div.className = "request"
+    div.innerHTML = `
+      ${d.from_id} 请求加好友
+      <button onclick="acceptRequest(${d.id})">同意</button>
+      <button onclick="rejectRequest(${d.id})">拒绝</button>
+    `
+    document.body.appendChild(div)
+  }
+}
+
+async function acceptRequest(id){
+  await supabase.from("friend_requests").update({status:"accepted"}).eq("id",id)
+}
+
+async function rejectRequest(id){
+  await supabase.from("friend_requests").update({status:"rejected"}).eq("id",id)
+}
+
+// 加载好友
+async function loadFriends(){
+  const {data} = await supabase
+    .from("friend_requests")
+    .select("from_id,to_id")
+    .or(`from_id.eq.${myId},to_id.eq.${myId}`)
+    .eq("status","accepted")
+
+  const list = document.getElementById("friendList")
+  list.innerHTML = ""
+
+  const friends = data.map(r=> r.from_id === myId ? r.to_id : r.from_id)
+  const unique = [...new Set(friends)]
+
+  unique.forEach(f=>{
+    const div = document.createElement("div")
+    div.className = "friend"
+    div.innerText = f
+    div.onclick = ()=>{
+      currentChatId = f
+      document.getElementById("chatTitle").innerText = "和 "+f+" 聊天中"
+      loadMessages()
+      toggleSidebar()
+    }
+    list.appendChild(div)
+  })
+}
+
+// 发送消息
+async function sendMessage(){
+  const content = document.getElementById("msgInput").value.trim()
+  if(!content || !currentChatId) return
+  await supabase.from("messages").insert([{
+    from_id:myId, to_id:currentChatId, content
+  }])
+  document.getElementById("msgInput").value = ""
+  loadMessages()
+}
+
+// 加载消息
+async function loadMessages(){
+  if(!currentChatId) return
+  const {data} = await supabase
+    .from("messages")
+    .select("*")
+    .or(`and(from_id.eq.${myId},to_id.eq.${currentChatId}),and(from_id.eq.${currentChatId},to_id.eq.${myId})`)
+    .order("created_at",{ascending:true})
+
+  const box = document.getElementById("messages")
+  box.innerHTML = ""
+  data.forEach(m=>{
+    const div = document.createElement("div")
+    div.className = "msg "+(m.from_id === myId ? "me" : "other")
+    div.innerText = m.content
+    box.appendChild(div)
+  })
+  box.scrollTop = box.scrollHeight
+}
+</script>
+</body>
+</html>
