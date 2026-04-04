@@ -201,7 +201,9 @@ async function saveUserToDB() {
 // ========== 核心功能：实时订阅（消息/申请实时更新） ==========
 function subscribeToRealTimeUpdates() {
   // 先取消旧的订阅（避免重复）
-  supabaseClient.removeAllChannels();
+  if (supabaseClient) {
+    supabaseClient.removeAllChannels();
+  }
 
   // 1. 实时订阅好友申请变化
   supabaseClient.channel("friend_requests")
@@ -211,28 +213,33 @@ function subscribeToRealTimeUpdates() {
       table: "friend_requests",
       filter: `to_id=eq.${myId}`
     }, () => loadFriendRequests())
-    .subscribe();
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") console.log("好友申请实时订阅成功");
+    });
 
   // 2. 实时订阅好友列表变化
   supabaseClient.channel("friend_list")
     .on("postgres_changes", {
       event: "*",
       schema: "public",
-      table: "friend_requests",
-      filter: `or(from_id=eq.${myId},to_id=eq.${myId})`
+      table: "friend_requests"
     }, () => loadFriendList())
-    .subscribe();
+    .subscribe((status) => {
+      if (status === "SUBSCRIBED") console.log("好友列表实时订阅成功");
+    });
 
   // 3. 实时订阅聊天消息变化（仅当选择好友后）
   if (currentChatId) {
-    supabaseClient.channel("messages")
+    supabaseClient.channel(`messages_${currentChatId}`)
       .on("postgres_changes", {
         event: "*",
         schema: "public",
         table: "messages",
-        filter: `or(and(from_id=eq.${myId},to_id=eq.${currentChatId}),and(from_id=eq.${currentChatId},to_id=eq.${myId}))`
+        filter: `or(from_id=eq.${myId},to_id=eq.${myId})`
       }, () => loadChatMessages())
-      .subscribe();
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") console.log("消息实时订阅成功");
+      });
   }
 }
 
@@ -363,29 +370,39 @@ async function rejectFriendRequest(requestId) {
   }
 }
 
-// ========== 好友功能：加载好友列表 ==========
+// ========== 好友功能：加载好友列表（修复查询语法） ==========
 async function loadFriendList() {
   try {
-    const { data, error } = await supabaseClient
+    // 修复OR查询语法，拆分两次查询避免解析错误
+    const { data: sentRequests, error: err1 } = await supabaseClient
       .from("friend_requests")
-      .select("from_id,to_id")
-      .or(`from_id=eq.${myId},to_id=eq.${myId}`)
+      .select("to_id")
+      .eq("from_id", myId)
       .eq("status", "accepted");
 
-    if (error) throw error;
+    const { data: receivedRequests, error: err2 } = await supabaseClient
+      .from("friend_requests")
+      .select("from_id")
+      .eq("to_id", myId)
+      .eq("status", "accepted");
+
+    if (err1 || err2) throw err1 || err2;
 
     const friendList = document.getElementById("friendList");
     const friendIds = [];
 
-    // 提取并去重好友ID
-    if (data && data.length > 0) {
-      data.forEach(item => {
-        const friendId = item.from_id === myId ? item.to_id : item.from_id;
-        if (!friendIds.includes(friendId)) friendIds.push(friendId);
-      });
+    // 合并好友ID并去重
+    if (sentRequests && sentRequests.length > 0) {
+      sentRequests.forEach(item => friendIds.push(item.to_id));
+    }
+    if (receivedRequests && receivedRequests.length > 0) {
+      receivedRequests.forEach(item => friendIds.push(item.from_id));
+    }
+    const uniqueFriendIds = [...new Set(friendIds)];
 
-      // 渲染好友列表
-      friendList.innerHTML = friendIds.map(friendId => `
+    // 渲染好友列表
+    if (uniqueFriendIds.length > 0) {
+      friendList.innerHTML = uniqueFriendIds.map(friendId => `
         <div class="friend-item" onclick="selectFriend('${friendId}')">
           ${friendId}
         </div>
@@ -451,16 +468,29 @@ async function loadChatMessages() {
   try {
     if (!currentChatId) return;
 
-    const { data, error } = await supabaseClient
+    // 拆分查询避免OR语法解析错误
+    const { data: sentMessages, error: err1 } = await supabaseClient
       .from("messages")
       .select("*")
-      .or(`and(from_id=eq.${myId},to_id=eq.${currentChatId}),and(from_id=eq.${currentChatId},to_id=eq.${myId})`)
+      .eq("from_id", myId)
+      .eq("to_id", currentChatId)
       .order("created_at", { ascending: true });
 
-    if (error) throw error;
+    const { data: receivedMessages, error: err2 } = await supabaseClient
+      .from("messages")
+      .select("*")
+      .eq("from_id", currentChatId)
+      .eq("to_id", myId)
+      .order("created_at", { ascending: true });
+
+    if (err1 || err2) throw err1 || err2;
+
+    // 合并消息并按时间排序
+    const allMessages = [...(sentMessages || []), ...(receivedMessages || [])];
+    allMessages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
     const messagesContainer = document.getElementById("messagesContainer");
-    messagesContainer.innerHTML = data.map(msg => `
+    messagesContainer.innerHTML = allMessages.map(msg => `
       <div class="message-item ${msg.from_id === myId ? "message-mine" : "message-other"}">
         ${msg.content}
       </div>
