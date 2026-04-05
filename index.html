@@ -58,7 +58,6 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
 .reply-preview span{font-weight:bold;color:#2563eb}
 .reply-close{background:none;border:none;color:#666;cursor:pointer;}
 
-/* 右键菜单样式 */
 .context-menu{position:absolute;background:white;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.1);z-index:999;min-width:120px;display:none;}
 .context-menu-item{padding:8px 12px;cursor:pointer;font-size:14px;}
 .context-menu-item:hover{background:#f3f4f6;}
@@ -119,7 +118,6 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
   </div>
 </div>
 
-<!-- 右键菜单 -->
 <div class="context-menu" id="friendContextMenu">
   <div class="context-menu-item danger" id="deleteFriendBtn">删除好友</div>
 </div>
@@ -144,7 +142,6 @@ let replyNick = "";
 let requestVisible = false;
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
-// 右键菜单相关
 let currentRightClickFriendId = null;
 let currentRightClickGroupId = null;
 const friendContextMenu = document.getElementById('friendContextMenu');
@@ -170,7 +167,6 @@ window.onload = async () => {
     if(currentGroupId) loadGroupMessages();
   };
 
-  // 绑定右键菜单事件
   document.getElementById('deleteFriendBtn').onclick = deleteCurrentFriend;
   document.getElementById('exitGroupBtn').onclick = exitCurrentGroup;
   document.addEventListener('click', closeAllContextMenus);
@@ -180,12 +176,9 @@ window.onload = async () => {
   loadFriendRequests();
   loadGroupList();
 
-  // 定时清理（兜底）
   setInterval(async () => {
-    // 清理聊天记录
     await supabaseClient.from("messages").delete().lt("created_at", new Date(Date.now() - 3600000).toISOString());
     await supabaseClient.from("group_messages").delete().lt("created_at", new Date(Date.now() - 3600000).toISOString());
-    // 清理文件
     const { data: oldFiles } = await supabaseClient.storage.from("uploads").list("chat", {
       createdBefore: new Date(Date.now() - 900000).toISOString()
     });
@@ -209,7 +202,6 @@ function toggleSidebar() {
   document.getElementById("sidebar").classList.toggle("show");
 }
 
-// ===================== 右键菜单 =====================
 function closeAllContextMenus() {
   friendContextMenu.style.display = 'none';
   groupContextMenu.style.display = 'none';
@@ -233,7 +225,6 @@ function showGroupContextMenu(e, groupId) {
 
 async function deleteCurrentFriend() {
   if(!currentRightClickFriendId || !confirm("确定要删除该好友吗？")) return;
-  // 删除双向好友关系
   await supabaseClient.from("friend_requests").delete()
     .or(`(from_id.eq.${myId}.and.to_id.eq.${currentRightClickFriendId})`
     + `, (from_id.eq.${currentRightClickFriendId}.and.to_id.eq.${myId})`);
@@ -262,7 +253,6 @@ async function exitCurrentGroup() {
   closeAllContextMenus();
 }
 
-// ===================== 好友 =====================
 function showAddFriendModal() {
   const t = prompt("输入对方ID");
   if (!t || t.length !== 8 || t === myId) return;
@@ -333,7 +323,6 @@ function selectFriend(id) {
   loadChatMessages();
 }
 
-// ===================== 回复 =====================
 function startReply(msgId, content, nick) {
   replyMsgId = msgId;
   replyContent = content.substring(0,30);
@@ -348,9 +337,7 @@ function cancelReply() {
   document.getElementById("replyPreview").style.display = "none";
 }
 
-// ===================== 转发 =====================
 async function doForward(msgId, isGroup, origContent, origFile, origNick) {
-  // 选择转发目标
   const { data: friends } = await supabaseClient.from("friend_requests").select("to_id").eq("from_id", myId).eq("status", "accepted");
   const { data: friendsR } = await supabaseClient.from("friend_requests").select("from_id").eq("to_id", myId).eq("status", "accepted");
   const { data: groups } = await supabaseClient.from("group_members").select("group_id").eq("user_id", myId);
@@ -413,7 +400,6 @@ async function doForward(msgId, isGroup, origContent, origFile, origNick) {
   }
 }
 
-// ===================== 单聊消息 =====================
 async function loadChatMessages() {
   if (!currentChatId) return;
   const { data: m1 } = await supabaseClient.from("messages").select("*").eq("from_id", myId).eq("to_id", currentChatId);
@@ -452,7 +438,12 @@ async function revokeMsg(id) {
 
 async function smartSend() {
   const c = document.getElementById("messageInput").value.trim();
-  if (!c && !replyMsgId) return;
+
+  if (!currentChatId && !currentGroupId) {
+    alert("请先选择聊天对象");
+    return;
+  }
+
   if (currentGroupId) {
     await supabaseClient.from("group_messages").insert({
       group_id: currentGroupId, from_id: myId, content: c,
@@ -468,10 +459,10 @@ async function smartSend() {
     cancelReply();
     loadChatMessages();
   }
+
   document.getElementById("messageInput").value = "";
 }
 
-// ===================== 群 =====================
 async function createGroup() {
   const name = prompt("群名");
   if (!name) return;
@@ -505,7 +496,6 @@ async function openGroup(gid, name, creatorId) {
   currentGroupId = gid; currentChatId = null; currentGroupCreator = creatorId;
   document.getElementById("chatTitle").innerText = "群："+name;
   
-  // 群主显示解散按钮
   const actionBtn = document.getElementById("groupActionBtn");
   if(creatorId === myId) {
     actionBtn.style.display = "block";
@@ -520,7 +510,6 @@ async function openGroup(gid, name, creatorId) {
 
 async function dissolveGroup(gid) {
   if(!confirm("群主身份，确定要解散该群聊吗？解散后所有成员将无法再访问此群")) return;
-  // 删除群成员、群消息、群本身
   await supabaseClient.from("group_members").delete().eq("group_id", gid);
   await supabaseClient.from("group_messages").delete().eq("group_id", gid);
   await supabaseClient.from("groups").delete().eq("id", gid);
@@ -554,7 +543,6 @@ async function loadGroupMessages() {
   box.scrollTop = box.scrollHeight;
 }
 
-// ===================== 文件 =====================
 document.getElementById("fileInput").addEventListener("change", async e=>{
   const f = e.target.files[0]; if (!f) return;
   if(f.size > MAX_FILE_SIZE) return alert("文件不能超过50MB");
@@ -575,7 +563,6 @@ document.getElementById("fileInput").addEventListener("change", async e=>{
   e.target.value = "";
 });
 
-// ===================== 实时 =====================
 function subscribeRealtime() {
   supabaseClient.removeAllChannels();
   supabaseClient.channel("chat").on("postgres_changes", { event: "*", schema: "public", table: "messages" }, ()=>{ if(currentChatId)loadChatMessages() }).subscribe();
@@ -584,7 +571,6 @@ function subscribeRealtime() {
   supabaseClient.channel("groups").on("postgres_changes", { event: "*", schema: "public", table: "groups" }, ()=>{ loadGroupList() }).subscribe();
 }
 
-// ===================== 表情 =====================
 function toggleEmoji() {
   const p = document.getElementById("emojiPanel");
   p.style.display = p.style.display==="none" ? "grid" : "none";
