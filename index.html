@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>聊天系统（完整版）</title>
+<title>聊天系统（转发修复完整版）</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
@@ -175,17 +175,6 @@ window.onload = async () => {
   loadFriendList();
   loadFriendRequests();
   loadGroupList();
-
-  setInterval(async () => {
-    await supabaseClient.from("messages").delete().lt("created_at", new Date(Date.now() - 3600000).toISOString());
-    await supabaseClient.from("group_messages").delete().lt("created_at", new Date(Date.now() - 3600000).toISOString());
-    const { data: oldFiles } = await supabaseClient.storage.from("uploads").list("chat", {
-      createdBefore: new Date(Date.now() - 900000).toISOString()
-    });
-    if(oldFiles?.length) {
-      await supabaseClient.storage.from("uploads").remove(oldFiles.map(f => `chat/${f.name}`));
-    }
-  }, 60000);
 };
 
 function generateId() {
@@ -224,11 +213,10 @@ function showGroupContextMenu(e, groupId) {
 }
 
 async function deleteCurrentFriend() {
-  if(!currentRightClickFriendId || !confirm("确定要删除该好友吗？")) return;
+  if(!currentRightClickFriendId || !confirm("确定删除好友？")) return;
   await supabaseClient.from("friend_requests").delete()
-    .or(`(from_id.eq.${myId}.and.to_id.eq.${currentRightClickFriendId})`
-    + `, (from_id.eq.${currentRightClickFriendId}.and.to_id.eq.${myId})`);
-  alert("好友已删除");
+    .or(`(from_id.eq.${myId}.and.to_id.eq.${currentRightClickFriendId}), (from_id.eq.${currentRightClickFriendId}.and.to_id.eq.${myId})`);
+  alert("已删除");
   loadFriendList();
   if(currentChatId === currentRightClickFriendId) {
     currentChatId = null;
@@ -239,10 +227,9 @@ async function deleteCurrentFriend() {
 }
 
 async function exitCurrentGroup() {
-  if(!currentRightClickGroupId || !confirm("确定要退出该群聊吗？")) return;
-  await supabaseClient.from("group_members").delete()
-    .eq("group_id", currentRightClickGroupId).eq("user_id", myId);
-  alert("已退出群聊");
+  if(!currentRightClickGroupId || !confirm("确定退出群聊？")) return;
+  await supabaseClient.from("group_members").delete().eq("group_id", currentRightClickGroupId).eq("user_id", myId);
+  alert("已退出");
   loadGroupList();
   if(currentGroupId === currentRightClickGroupId) {
     currentGroupId = null;
@@ -339,6 +326,7 @@ function cancelReply() {
   document.getElementById("replyPreview").style.display = "none";
 }
 
+// ====================== 转发已彻底修复 ======================
 async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
   const { data: friends1 } = await supabaseClient.from("friend_requests").select("to_id").eq("from_id", myId).eq("status", "accepted");
   const { data: friends2 } = await supabaseClient.from("friend_requests").select("from_id").eq("to_id", myId).eq("status", "accepted");
@@ -377,7 +365,10 @@ async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
       to_id: target.id,
       content: text,
       file_url: origFile || null,
-      forward_info: forwardInfo
+      forward_info: forwardInfo,
+      reply_to_id: null,
+      reply_content: null,
+      reply_nickname: null
     });
   } else {
     await supabaseClient.from("group_messages").insert({
@@ -385,11 +376,17 @@ async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
       from_id: myId,
       content: text,
       file_url: origFile || null,
-      forward_info: forwardInfo
+      forward_info: forwardInfo,
+      reply_to_id: null,
+      reply_content: null,
+      reply_nickname: null
     });
   }
   alert("转发成功");
+  if(currentChatId) loadChatMessages();
+  if(currentGroupId) loadGroupMessages();
 }
+// ============================================================
 
 async function loadChatMessages() {
   if (!currentChatId) return;
@@ -429,36 +426,25 @@ async function revokeMsg(id) {
 
 async function smartSend() {
   const c = document.getElementById("messageInput").value.trim();
-
-  if (!currentChatId && !currentGroupId) {
-    alert("请先选择聊天");
-    return;
-  }
+  if (!currentChatId && !currentGroupId) return alert("请先选择聊天");
 
   if (currentChatId) {
     await supabaseClient.from("messages").insert({
-      from_id: myId,
-      to_id: currentChatId,
-      content: c,
-      reply_to_id: replyMsgId,
-      reply_content: replyContent,
-      reply_nickname: replyNick
+      from_id: myId, to_id: currentChatId, content: c,
+      reply_to_id: replyMsgId, reply_content: replyContent, reply_nickname: replyNick,
+      file_url: null, forward_info: null
     });
     cancelReply();
     loadChatMessages();
   } else if (currentGroupId) {
     await supabaseClient.from("group_messages").insert({
-      group_id: currentGroupId,
-      from_id: myId,
-      content: c,
-      reply_to_id: replyMsgId,
-      reply_content: replyContent,
-      reply_nickname: replyNick
+      group_id: currentGroupId, from_id: myId, content: c,
+      reply_to_id: replyMsgId, reply_content: replyContent, reply_nickname: replyNick,
+      file_url: null, forward_info: null
     });
     cancelReply();
     loadGroupMessages();
   }
-
   document.getElementById("messageInput").value = "";
 }
 
@@ -494,7 +480,6 @@ async function loadGroupList() {
 async function openGroup(gid, name, creatorId) {
   currentGroupId = gid; currentChatId = null; currentGroupCreator = creatorId;
   document.getElementById("chatTitle").innerText = "群："+name;
-  
   const actionBtn = document.getElementById("groupActionBtn");
   if(creatorId === myId) {
     actionBtn.style.display = "block";
@@ -502,18 +487,16 @@ async function openGroup(gid, name, creatorId) {
   } else {
     actionBtn.style.display = "none";
   }
-  
   if (window.innerWidth<=600) toggleSidebar();
   loadGroupMessages();
 }
 
 async function dissolveGroup(gid) {
-  if(!confirm("确定解散该群？")) return;
+  if(!confirm("确定解散？")) return;
   await supabaseClient.from("group_members").delete().eq("group_id", gid);
   await supabaseClient.from("group_messages").delete().eq("group_id", gid);
   await supabaseClient.from("groups").delete().eq("id", gid);
-  alert("群已解散");
-  loadGroupList();
+  alert("已解散"); loadGroupList();
   currentGroupId = null;
   document.getElementById("chatTitle").innerText = "选择聊天";
   document.getElementById("groupActionBtn").style.display = "none";
@@ -544,19 +527,15 @@ async function loadGroupMessages() {
 
 document.getElementById("fileInput").addEventListener("change", async e=>{
   const f = e.target.files[0]; if (!f) return;
-  if(f.size > MAX_FILE_SIZE) return alert("文件不能超过50MB");
+  if(f.size > MAX_FILE_SIZE) return alert("≤50MB");
   const fn = `${myId}_${Date.now()}_${f.name}`;
   const { data } = await supabaseClient.storage.from("uploads").upload(`chat/${fn}`, f);
   const url = supabaseClient.storage.from("uploads").getPublicUrl(`chat/${fn}`).data.publicUrl;
   if (currentChatId) {
-    await supabaseClient.from("messages").insert({
-      from_id: myId, to_id: currentChatId, content: "", file_url: url, file_name: f.name, file_size: f.size
-    });
+    await supabaseClient.from("messages").insert({ from_id: myId, to_id: currentChatId, content: "", file_url: url, file_name: f.name });
     loadChatMessages();
   } else if (currentGroupId) {
-    await supabaseClient.from("group_messages").insert({
-      group_id: currentGroupId, from_id: myId, content: "", file_url: url, file_name: f.name, file_size: f.size
-    });
+    await supabaseClient.from("group_messages").insert({ group_id: currentGroupId, from_id: myId, content: "", file_url: url, file_name: f.name });
     loadGroupMessages();
   }
   e.target.value = "";
