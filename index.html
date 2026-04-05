@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>临时ID聊天（单聊+群聊+文件）</title>
+<title>聊天系统（完整版）</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
@@ -11,8 +11,9 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
 .sidebar{width:280px;background:white;border-right:1px solid #ddd;padding:15px;display:flex;flex-direction:column;}
 .hamburger{display:none;font-size:22px;background:none;border:none;position:fixed;top:10px;left:10px;z-index:10;background:white;padding:5px 10px;border-radius:5px;cursor:pointer;}
 @media (max-width:600px){.sidebar{display:none;width:100%;position:fixed;height:100vh;z-index:9}.sidebar.show{display:flex}.hamburger{display:block}}
-.my-id-card{background:#eef;padding:12px;border-radius:8px;margin:10px 0;font-size:14px;color:#333;}
+.my-id-card{background:#eef;padding:12px;border-radius:8px;margin:10px 0;font-size:14px;color:#333;display:flex;align-items:center;justify-content:space-between;}
 .my-id-card span{font-weight:bold;color:#2563eb}
+.btn-nick{background:#4F46E5;color:white;border:none;padding:4px 8px;border-radius:4px;font-size:12px;cursor:pointer;}
 .btn{background:#4F46E5;color:white;border:none;padding:10px 12px;border-radius:6px;margin:5px 0;width:100%;cursor:pointer;font-size:14px;}
 .btn-request{background:#f59e0b}
 .section-title{font-weight:bold;margin-top:20px;margin-bottom:10px;font-size:16px;color:#333;}
@@ -30,18 +31,20 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
 .message-mine{background:#4F46E5;color:white;margin-left:auto;align-items:flex-end;}
 .message-other{background:#e5e7eb;margin-right:auto;}
 
-/* 文件卡片核心样式 - 极简风格 */
+.quote{background:rgba(0,0,0,0.1);padding:6px 8px;border-radius:6px;margin-bottom:6px;font-size:12px;border-left:3px solid #4F46E5;}
+.quote-user{font-weight:bold;margin-bottom:2px;}
+.quote-content{opacity:0.9;}
+
 .file-card{background:rgba(0,0,0,0.1);padding:8px 10px;border-radius:6px;margin:4px 0;font-size:13px;color:inherit;}
 .file-name{font-weight:bold;margin-bottom:4px;}
 .file-size{opacity:0.8;font-size:12px;}
 .download-btn{background:none;border:none;color:#4F46E5;cursor:pointer;font-size:12px;padding:0;text-align:left;margin-top:4px;}
 .download-btn:hover{text-decoration:underline;}
 
-/* 撤回按钮样式 */
-.revoke-btn{background:transparent;border:none;color:#ccc;font-size:12px;cursor:pointer;margin-top:4px;}
-.revoke-btn:hover{color:#fff}
+.msg-actions{display:flex;gap:8px;margin-top:6px;font-size:12px;}
+.msg-actions button{background:none;border:none;color:inherit;opacity:0.7;cursor:pointer;font-size:12px;}
+.msg-actions button:hover{opacity:1;}
 
-/* 输入框区域 */
 .input-container{display:flex;padding:10px;border-top:1px solid #ddd;background:white;position:relative;align-items:center;}
 .input-container input{flex:1;padding:10px;border:1px solid #ddd;border-radius:6px;font-size:14px;outline:none;}
 .input-container button{margin-left:8px;padding:10px 16px;background:#4F46E5;color:white;border:none;border-radius:6px;cursor:pointer;}
@@ -50,57 +53,54 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
 .emoji-panel{position:absolute;bottom:60px;right:10px;background:white;border:1px solid #ddd;border-radius:8px;padding:8px;display:none;grid-template-columns:repeat(3,1fr);gap:8px;z-index:10;}
 .emoji-panel span{font-size:20px;cursor:pointer;padding:4px;text-align:center;}
 .emoji-panel span:hover{background:#f3f4f6;border-radius:4px;}
+
+.reply-preview{padding:8px 12px;background:#eef;border-radius:6px;margin-bottom:6px;font-size:14px;display:flex;justify-content:space-between;align-items:center;}
+.reply-preview span{font-weight:bold;color:#2563eb}
+.reply-close{background:none;border:none;color:#666;cursor:pointer;}
 </style>
 </head>
 <body>
 <button class="hamburger" onclick="toggleSidebar()">☰</button>
 <div class="container">
   <div class="sidebar" id="sidebar">
-    <div class="section-title">我的临时ID</div>
-    <div class="my-id-card" id="myIdCard">加载中...</div>
+    <div class="section-title">我的账号</div>
+    <div class="my-id-card" id="myIdCard">
+      <div>ID：<span id="myIdText">加载中...</span></div>
+      <button class="btn-nick" id="setNickBtn">设置昵称</button>
+    </div>
+
     <button class="btn" onclick="showAddFriendModal()">➕ 添加好友</button>
     <button class="btn btn-request" onclick="toggleRequestList()">📩 好友申请</button>
-    
-    <!-- 好友列表 -->
+
     <div class="section-title">好友列表</div>
-    <div class="friend-list" id="friendList"><div class="empty-tip">暂无好友，添加好友后显示</div></div>
-    
-    <!-- 好友申请 -->
+    <div class="friend-list" id="friendList"><div class="empty-tip">暂无好友</div></div>
+
     <div class="section-title" id="requestTitle" style="display:none">好友申请</div>
-    <div class="request-list" id="requestList" style="display:none"><div class="empty-tip">暂无好友申请</div></div>
-    
-    <!-- 群聊区域 -->
+    <div class="request-list" id="requestList" style="display:none"><div class="empty-tip">暂无申请</div></div>
+
     <div class="section-title">群聊</div>
     <button class="btn" onclick="createGroup()">➕ 创建群</button>
     <button class="btn" onclick="joinGroup()">➕ 加入群</button>
-    <div class="group-list" id="groupList" style="margin-top:10px;flex:1;overflow-y:auto;">
-      <div class="empty-tip">暂无群</div>
-    </div>
+    <div class="group-list" id="groupList"><div class="empty-tip">暂无群</div></div>
   </div>
-  
+
   <div class="chat-area">
-    <div class="chat-header" id="chatHeader">选择好友/群开始聊天</div>
+    <div class="chat-header" id="chatHeader">选择聊天</div>
     <div class="messages-container" id="messagesContainer"></div>
+    <div id="replyPreview" style="display:none;padding:8px 12px;background:#eef;border-radius:6px;margin:8px;">
+      回复：<span id="replyToText"></span>
+      <button onclick="cancelReply()" style="margin-left:8px;">×</button>
+    </div>
     <div class="input-container">
-      <!-- 文件上传按钮 -->
-      <button class="btn-file" title="上传文件" onclick="document.getElementById('fileInput').click()">📎</button>
+      <button class="btn-file" onclick="document.getElementById('fileInput').click()">📎</button>
       <input type="file" id="fileInput" style="display:none" accept="image/*,audio/*">
-      
       <input type="text" id="messageInput" placeholder="输入消息...">
       <button class="btn-emoji" onclick="toggleEmoji()">😊</button>
       <button onclick="smartSend()">发送</button>
-      
-      <!-- 表情面板 -->
       <div class="emoji-panel" id="emojiPanel">
-        <span onclick="insertEmoji('😊')">😊</span>
-        <span onclick="insertEmoji('😂')">😂</span>
-        <span onclick="insertEmoji('🥰')">🥰</span>
-        <span onclick="insertEmoji('👍')">👍</span>
-        <span onclick="insertEmoji('🔥')">🔥</span>
-        <span onclick="insertEmoji('😭')">😭</span>
-        <span onclick="insertEmoji('😎')">😎</span>
-        <span onclick="insertEmoji('❤️')">❤️</span>
-        <span onclick="insertEmoji('🎉')">🎉</span>
+        <span onclick="insertEmoji('😊')">😊</span><span onclick="insertEmoji('😂')">😂</span><span onclick="insertEmoji('🥰')">🥰</span>
+        <span onclick="insertEmoji('👍')">👍</span><span onclick="insertEmoji('🔥')">🔥</span><span onclick="insertEmoji('😭')">😭</span>
+        <span onclick="insertEmoji('😎')">😎</span><span onclick="insertEmoji('❤️')">❤️</span><span onclick="insertEmoji('🎉')">🎉</span>
       </div>
     </div>
   </div>
@@ -108,652 +108,314 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-// Supabase核心配置
 const SUPABASE_URL = "https://hlhtcciaafwmxxtshtaa.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhsaHRjY2lhYWZ3bXh4dHNodGFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMDcyOTcsImV4cCI6MjA5MDg4MzI5N30.cn6RJt_0xXp54n2NvqMq0mFYwBVmdO6Q2NGdnwZicoU";
 
-// 全局变量
 let supabaseClient;
 let myId;
-let currentChatId = null; // 当前单聊好友ID
-let currentGroupId = null; // 当前群聊ID
+let myNick = "";
+let currentChatId = null;
+let currentGroupId = null;
+let replyMsgId = null;
+let replyContent = "";
+let replyNick = "";
 let requestVisible = false;
-const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB文件大小限制
+const MAX_FILE_SIZE = 50 * 1024 * 1024;
 
-// 页面初始化
 window.onload = async () => {
-  // 初始化Supabase客户端
   supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-  
-  // 生成/获取用户临时ID
   myId = sessionStorage.getItem("chatId") || generateId();
   sessionStorage.setItem("chatId", myId);
-  document.getElementById("myIdCard").innerHTML = `ID：<span>${myId}</span>`;
+  document.getElementById("myIdText").innerText = myId;
 
-  // 保存用户到数据库
   await supabaseClient.from("users").upsert({ id: myId }, { onConflict: "id" });
+  const { data: me } = await supabaseClient.from("users").select("nickname").eq("id", myId).single();
+  if (me) myNick = me.nickname || "";
 
-  // 初始化数据和实时订阅
+  document.getElementById("setNickBtn").onclick = async () => {
+    const newNick = prompt("设置昵称", myNick || "");
+    if (newNick === null) return;
+    await supabaseClient.from("users").update({ nickname: newNick }).eq("id", myId);
+    myNick = newNick;
+    alert("昵称已更新");
+  };
+
   subscribeRealtime();
   loadFriendList();
   loadFriendRequests();
   loadGroupList();
 };
 
-// 生成8位随机ID
 function generateId() {
-  const chars = "0123456789abcdefghijklmnopqrstuvwxyz";
-  return Array.from({ length: 8 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+  const c = "0123456789abcdefghijklmnopqrstuvwxyz";
+  return Array.from({ length: 8 }, () => c[Math.floor(Math.random() * c.length)]).join("");
 }
 
-// 实时订阅数据变化
-function subscribeRealtime() {
-  supabaseClient.removeAllChannels();
-
-  // 1. 好友申请实时更新
-  supabaseClient.channel("friend_requests")
-   .on("postgres_changes", {
-      event: "*",
-      schema: "public",
-      table: "friend_requests",
-      filter: `to_id.eq.${myId}`
-    }, () => {
-      loadFriendRequests();
-      loadFriendList();
-    })
-   .subscribe();
-
-  // 2. 单聊消息实时更新
-  supabaseClient.channel("chat_messages")
-   .on("postgres_changes", {
-      event: "INSERT",
-      schema: "public",
-      table: "messages",
-      filter: `to_id.eq.${myId}`
-    }, () => {
-      if (currentChatId) loadChatMessages();
-    })
-   .subscribe();
-
-  // 3. 群消息实时更新
-  supabaseClient.channel("group_chat_messages")
-   .on("postgres_changes", {
-      event: "INSERT",
-      schema: "public",
-      table: "group_messages"
-    }, () => {
-      if (currentGroupId) loadGroupMessages();
-    })
-   .subscribe();
+async function getNick(uid) {
+  const { data } = await supabaseClient.from("users").select("nickname").eq("id", uid).single();
+  return data?.nickname || uid;
 }
 
-// 移动端侧边栏切换
 function toggleSidebar() {
   document.getElementById("sidebar").classList.toggle("show");
 }
 
-// ========== 好友相关功能 ==========
-// 显示添加好友弹窗
+// ===================== 好友 =====================
 function showAddFriendModal() {
-  const targetId = prompt("请输入对方8位临时ID：");
-  if (!targetId || targetId.length !== 8 || targetId === myId) {
-    alert("请输入有效的8位ID，且不能是自己");
-    return;
-  }
-  sendFriendRequest(targetId);
+  const t = prompt("输入对方ID");
+  if (!t || t.length !== 8 || t === myId) return;
+  sendFriendRequest(t);
 }
 
-// 发送好友申请
-async function sendFriendRequest(targetId) {
-  // 检查对方是否存在
-  const { data: targetUser } = await supabaseClient.from("users").select("id").eq("id", targetId).maybeSingle();
-  if (!targetUser) {
-    alert("发送失败：对方ID不存在，请确认对方已打开聊天页面");
-    return;
-  }
-
-  // 检查是否已发送过申请
-  const { data: existingRequest } = await supabaseClient.from("friend_requests")
-   .select("id").eq("from_id", myId).eq("to_id", targetId).eq("status", "pending");
-  
-  if (existingRequest?.length) {
-    alert("已发送过该申请，请勿重复发送");
-    return;
-  }
-
-  // 插入申请记录
-  await supabaseClient.from("friend_requests").insert({
-    from_id: myId,
-    to_id: targetId,
-    status: "pending"
-  });
-  alert("好友申请已发送成功！");
+async function sendFriendRequest(tid) {
+  const { data: u } = await supabaseClient.from("users").select("id").eq("id", tid).maybeSingle();
+  if (!u) return alert("用户不存在");
+  await supabaseClient.from("friend_requests").insert({ from_id: myId, to_id: tid, status: "pending" });
+  alert("申请已发送");
 }
 
-// 切换好友申请列表显示/隐藏
 function toggleRequestList() {
   requestVisible = !requestVisible;
-  const titleEl = document.getElementById("requestTitle");
-  const listEl = document.getElementById("requestList");
-  
-  titleEl.style.display = requestVisible ? "block" : "none";
-  listEl.style.display = requestVisible ? "block" : "none";
-  
+  document.getElementById("requestTitle").style.display = requestVisible ? "block" : "none";
+  document.getElementById("requestList").style.display = requestVisible ? "block" : "none";
   if (requestVisible) loadFriendRequests();
 }
 
-// 加载好友申请列表
 async function loadFriendRequests() {
-  const { data: requests } = await supabaseClient.from("friend_requests")
-   .select("*").eq("to_id", myId).eq("status", "pending");
-
-  const listEl = document.getElementById("requestList");
-  if (!requests?.length) {
-    listEl.innerHTML = "<div class='empty-tip'>暂无好友申请</div>";
-    return;
-  }
-
-  listEl.innerHTML = requests.map(req => `
+  const { data: r } = await supabaseClient.from("friend_requests").select("*").eq("to_id", myId).eq("status", "pending");
+  const el = document.getElementById("requestList");
+  if (!r?.length) { el.innerHTML = "<div class='empty-tip'>暂无申请</div>"; return; }
+  el.innerHTML = r.map(x => `
     <div class="request-item">
-      <span>${req.from_id}</span>
+      <span>${x.from_id}</span>
       <div class="request-btn-group">
-        <button class="btn-accept" onclick="acceptFriendRequest('${req.id}')">同意</button>
-        <button class="btn-reject" onclick="rejectFriendRequest('${req.id}')">拒绝</button>
+        <button class="btn-accept" onclick="acceptFriendRequest('${x.id}')">同意</button>
+        <button class="btn-reject" onclick="rejectFriendRequest('${x.id}')">拒绝</button>
       </div>
     </div>
   `).join("");
 }
 
-// 同意好友申请
-async function acceptFriendRequest(requestId) {
-  await supabaseClient.from("friend_requests").update({ status: "accepted" }).eq("id", requestId);
-  alert("已同意好友申请！");
-  loadFriendRequests();
-  loadFriendList();
+async function acceptFriendRequest(id) {
+  await supabaseClient.from("friend_requests").update({ status: "accepted" }).eq("id", id);
+  loadFriendRequests(); loadFriendList();
 }
 
-// 拒绝好友申请
-async function rejectFriendRequest(requestId) {
-  await supabaseClient.from("friend_requests").update({ status: "rejected" }).eq("id", requestId);
-  alert("已拒绝好友申请！");
+async function rejectFriendRequest(id) {
+  await supabaseClient.from("friend_requests").update({ status: "rejected" }).eq("id", id);
   loadFriendRequests();
 }
 
-// 加载好友列表（右键删除）
 async function loadFriendList() {
-  // 获取我发送的已通过申请
-  const { data: sentAccepted } = await supabaseClient.from("friend_requests")
-   .select("to_id").eq("from_id", myId).eq("status", "accepted");
-
-  // 获取我收到的已通过申请
-  const { data: receivedAccepted } = await supabaseClient.from("friend_requests")
-   .select("from_id").eq("to_id", myId).eq("status", "accepted");
-
-  // 合并去重
-  const friendIds = [
-   ...(sentAccepted || []).map(item => item.to_id),
-   ...(receivedAccepted || []).map(item => item.from_id)
-  ];
-  const uniqueFriends = [...new Set(friendIds)];
-
-  const listEl = document.getElementById("friendList");
-  if (uniqueFriends.length === 0) {
-    listEl.innerHTML = "<div class='empty-tip'>暂无好友，添加好友后显示</div>";
-    return;
+  const { data: s } = await supabaseClient.from("friend_requests").select("to_id").eq("from_id", myId).eq("status", "accepted");
+  const { data: r } = await supabaseClient.from("friend_requests").select("from_id").eq("to_id", myId).eq("status", "accepted");
+  const arr = [...(s||[]).map(i=>i.to_id), ...(r||[]).map(i=>i.from_id)];
+  const uniq = [...new Set(arr)];
+  const el = document.getElementById("friendList");
+  if (!uniq.length) { el.innerHTML = "<div class='empty-tip'>暂无好友</div>"; return; }
+  let html = "";
+  for (let id of uniq) {
+    const n = await getNick(id);
+    html += `<div class="friend-item" onclick="selectFriend('${id}')">${n}</div>`;
   }
-
-  // 渲染好友列表（右键删除）
-  listEl.innerHTML = uniqueFriends.map(id => `
-    <div class="friend-item" onclick="selectFriend('${id}')" 
-         oncontextmenu="deleteFriend('${id}'); return false;">
-      ${id} (右键删除)
-    </div>
-  `).join("");
+  el.innerHTML = html;
 }
 
-// 删除好友（双向删除）
-async function deleteFriend(friendId) {
-  if (!confirm(`确定要删除好友 ${friendId} 吗？`)) return;
-
-  // 删除我发给对方的记录
-  await supabaseClient.from("friend_requests")
-    .delete()
-    .eq("from_id", myId)
-    .eq("to_id", friendId);
-
-  // 删除对方发给我的记录
-  await supabaseClient.from("friend_requests")
-    .delete()
-    .eq("from_id", friendId)
-    .eq("to_id", myId);
-
-  alert("删除成功");
-  loadFriendList();
-  
-  // 如果正在和该好友聊天，清空聊天界面
-  if (currentChatId === friendId) {
-    currentChatId = null;
-    currentGroupId = null;
-    document.getElementById("chatHeader").innerText = "选择好友/群开始聊天";
-    document.getElementById("messagesContainer").innerHTML = "";
-  }
-}
-
-// 选择好友开始单聊
-function selectFriend(friendId) {
-  currentChatId = friendId;
-  currentGroupId = null; // 关闭群聊状态
-  document.getElementById("chatHeader").innerText = `和 ${friendId} 聊天中`;
-  
-  // 移动端自动收起侧边栏
-  if (window.innerWidth <= 600) toggleSidebar();
-  
-  // 加载聊天记录
+function selectFriend(id) {
+  currentChatId = id; currentGroupId = null;
+  getNick(id).then(n => document.getElementById("chatHeader").innerText = "和 "+n+" 聊天");
+  if (window.innerWidth<=600) toggleSidebar();
   loadChatMessages();
 }
 
-// ========== 单聊消息功能 ==========
-// 发送单聊文字消息
-async function sendMessage() {
-  const messageContent = document.getElementById("messageInput").value.trim();
-  
-  if (!messageContent) {
-    alert("消息不能为空");
-    return;
-  }
-  if (!currentChatId) {
-    alert("请先选择要聊天的好友");
-    return;
-  }
-
-  // 插入消息记录
-  await supabaseClient.from("messages").insert({
-    from_id: myId,
-    to_id: currentChatId,
-    content: messageContent,
-    file_url: null,
-    file_name: null,
-    file_size: null
-  });
-
-  // 清空输入框
-  document.getElementById("messageInput").value = "";
-  
-  // 刷新消息列表
-  loadChatMessages();
+// ===================== 回复 =====================
+function startReply(msgId, content, nick) {
+  replyMsgId = msgId;
+  replyContent = content.substring(0,30);
+  replyNick = nick;
+  const p = document.getElementById("replyPreview");
+  document.getElementById("replyToText").innerText = `${nick}: ${replyContent}`;
+  p.style.display = "block";
 }
 
-// 加载单聊消息（包含文件卡片）
+function cancelReply() {
+  replyMsgId = null; replyContent = ""; replyNick = "";
+  document.getElementById("replyPreview").style.display = "none";
+}
+
+// ===================== 转发 =====================
+async function doForward(msgId, isGroup, origContent, origFile, origNick) {
+  const toC = prompt("转发到好友ID");
+  if (!toC) return;
+  const text = origContent || "[文件]";
+  const info = `转发自 ${origNick}: ${text.substring(0,20)}`;
+
+  if (isGroup) {
+    await supabaseClient.from("group_messages").insert({
+      group_id: currentGroupId, from_id: myId, content: text,
+      forward_info: info, file_url: origFile, file_name: null, file_size: null
+    });
+    loadGroupMessages();
+  } else {
+    await supabaseClient.from("messages").insert({
+      from_id: myId, to_id: toC, content: text,
+      forward_info: info, file_url: origFile, file_name: null, file_size: null
+    });
+    alert("已转发");
+    loadChatMessages();
+  }
+}
+
+// ===================== 单聊消息 =====================
 async function loadChatMessages() {
   if (!currentChatId) return;
-
-  // 获取我发送的消息
-  const { data: myMessages } = await supabaseClient.from("messages")
-   .select("*").eq("from_id", myId).eq("to_id", currentChatId);
-  
-  // 获取好友发送的消息
-  const { data: friendMessages } = await supabaseClient.from("messages")
-   .select("*").eq("from_id", currentChatId).eq("to_id", myId);
-
-  // 合并并按时间排序
-  const allMessages = [...(myMessages || []), ...(friendMessages || [])]
-   .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
-
-  // 渲染消息
-  const messageContainer = document.getElementById("messagesContainer");
-  messageContainer.innerHTML = allMessages.map(msg => `
-    <div class="message-item ${msg.from_id === myId ? "message-mine" : "message-other"}">
-      ${msg.content ? msg.content : ''}
-      ${msg.file_url ? `
-        <div class="file-card">
-          <div class="file-name">${msg.file_name}</div>
-          <div class="file-size">${formatFileSize(msg.file_size)}</div>
-          <button class="download-btn" onclick="window.open('${msg.file_url}', '_blank')">下载</button>
-        </div>
-      ` : ''}
-      ${msg.from_id === myId && !msg.file_url ? `<button class="revoke-btn" onclick="revokeMessage('${msg.id}')">撤回</button>` : ""}
-    </div>
-  `).join("");
-
-  // 滚动到底部
-  messageContainer.scrollTop = messageContainer.scrollHeight;
+  const { data: m1 } = await supabaseClient.from("messages").select("*").eq("from_id", myId).eq("to_id", currentChatId);
+  const { data: m2 } = await supabaseClient.from("messages").select("*").eq("from_id", currentChatId).eq("to_id", myId);
+  const all = [...(m1||[]), ...(m2||[])].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  const box = document.getElementById("messagesContainer");
+  let html = "";
+  for (let m of all) {
+    const mine = m.from_id === myId;
+    const nick = await getNick(m.from_id);
+    html += `<div class="message-item ${mine ? 'message-mine' : 'message-other'}">`;
+    if (m.reply_content) {
+      html += `<div class="quote"><div class="quote-user">${m.reply_nickname}</div><div class="quote-content">${m.reply_content}</div></div>`;
+    }
+    if (m.forward_info) html += `<div style="font-size:12px;opacity:0.8">${m.forward_info}</div>`;
+    html += `${m.content||''}`;
+    if (m.file_url) {
+      html += `<div class="file-card"><div class="file-name">${m.file_name||'文件'}</div>`;
+      html += `<button class="download-btn" onclick="window.open('${m.file_url}')">下载</button></div>`;
+    }
+    html += `<div class="msg-actions">`;
+    if (!mine) html += `<button onclick="startReply('${m.id}','${m.content||''}','${nick}')">回复</button>`;
+    html += `<button onclick="doForward('${m.id}',false,'${m.content||''}','${m.file_url||''}','${nick}')">转发</button>`;
+    if (mine) html += `<button onclick="revokeMsg('${m.id}')">撤回</button>`;
+    html += `</div></div>`;
+  }
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
 }
 
-// 撤回单聊消息（仅文字消息）
-async function revokeMessage(msgId) {
-  if (!confirm("确定撤回这条消息吗？")) return;
-  
-  const { error } = await supabaseClient.from("messages")
-    .delete()
-    .eq("id", msgId)
-    .eq("from_id", myId);
-
-  if (error) {
-    alert("撤回失败：" + error.message);
-    return;
-  }
-  
-  // 刷新消息列表
+async function revokeMsg(id) {
+  if (!confirm("撤回？")) return;
+  await supabaseClient.from("messages").delete().eq("id", id);
   loadChatMessages();
 }
 
-// ========== 表情功能 ==========
-function toggleEmoji() {
-  const panel = document.getElementById("emojiPanel");
-  panel.style.display = panel.style.display === "none" ? "grid" : "none";
-}
-
-function insertEmoji(emoji) {
-  const input = document.getElementById("messageInput");
-  input.value += emoji;
-  input.focus();
-  toggleEmoji();
-}
-
-// 点击外部关闭表情面板
-document.addEventListener("click", (e) => {
-  const panel = document.getElementById("emojiPanel");
-  const btn = document.querySelector(".btn-emoji");
-  if (!panel.contains(e.target) && e.target !== btn) {
-    panel.style.display = "none";
-  }
-});
-
-// ========== 文件上传功能 ==========
-document.getElementById("fileInput").addEventListener("change", async function(e) {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  // 1. 检查文件大小
-  if (file.size > MAX_FILE_SIZE) {
-    alert(`文件过大，最大支持${MAX_FILE_SIZE/1024/1024}MB`);
-    this.value = "";
-    return;
-  }
-
-  // 2. 检查文件类型（图片/音频）
-  const fileType = file.type;
-  if (!fileType.startsWith('image/') && !fileType.startsWith('audio/')) {
-    alert("仅支持图片和音频文件！");
-    this.value = "";
-    return;
-  }
-
-  try {
-    // 3. 生成唯一文件名
-    const uniqueFileName = `${myId}_${Date.now()}_${file.name}`;
-    const filePath = `chat/${uniqueFileName}`;
-
-    // 4. 上传文件到Supabase存储
-    const { data: uploadData, error: uploadError } = await supabaseClient.storage
-      .from('uploads')
-      .upload(filePath, file, {
-        cacheControl: '3600',
-        upsert: false
-      });
-
-    if (uploadError) throw new Error(uploadError.message);
-
-    // 5. 获取文件公网链接
-    const { data: urlData } = supabaseClient.storage
-      .from('uploads')
-      .getPublicUrl(filePath);
-
-    const fileUrl = urlData.publicUrl;
-
-    // 6. 插入文件消息记录
-    if (currentChatId) {
-      // 单聊文件消息
-      await supabaseClient.from("messages").insert({
-        from_id: myId,
-        to_id: currentChatId,
-        content: "",
-        file_url: fileUrl,
-        file_name: file.name,
-        file_size: file.size
-      });
-      loadChatMessages();
-    } else if (currentGroupId) {
-      // 群聊文件消息
-      await supabaseClient.from("group_messages").insert({
-        group_id: currentGroupId,
-        from_id: myId,
-        content: "",
-        file_url: fileUrl,
-        file_name: file.name,
-        file_size: file.size
-      });
-      loadGroupMessages();
-    } else {
-      alert("请先选择好友或群聊！");
-      return;
-    }
-
-    // 清空文件选择框
-    this.value = "";
-  } catch (error) {
-    alert("文件上传失败：" + error.message);
-    this.value = "";
-  }
-});
-
-// 格式化文件大小显示
-function formatFileSize(bytes) {
-  if (!bytes) return "0 B";
-  if (bytes < 1024) return bytes + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-}
-
-// ========== 群聊相关功能 ==========
-// 创建群（设置群名+记录创建者）
-async function createGroup() {
-  const groupName = prompt("请输入群名称：");
-  if (!groupName) return;
-
-  // 生成群ID
-  const groupId = generateId();
-
-  // 插入群记录
-  await supabaseClient.from("groups").insert([
-    { id: groupId, name: groupName, creator_id: myId }
-  ]);
-
-  // 把创建者加入群
-  await supabaseClient.from("group_members").insert([
-    { group_id: groupId, user_id: myId }
-  ]);
-
-  alert("群创建成功！群ID：" + groupId);
-  loadGroupList();
-}
-
-// 加入群
-async function joinGroup() {
-  const groupId = prompt("请输入群ID：");
-  if (!groupId) return;
-
-  // 检查群是否存在
-  const { data: group } = await supabaseClient
-    .from("groups").select("id").eq("id", groupId).maybeSingle();
-
-  if (!group) return alert("群不存在");
-
-  // 加入群
-  await supabaseClient.from("group_members").insert([
-    { group_id: groupId, user_id: myId }
-  ]);
-
-  alert("加入成功");
-  loadGroupList();
-}
-
-// 加载群列表（显示人数，右键解散/退出）
-async function loadGroupList() {
-  // 获取我加入的所有群
-  const { data: myGroups } = await supabaseClient
-    .from("group_members")
-    .select("group_id")
-    .eq("user_id", myId);
-
-  if (!myGroups || myGroups.length === 0) {
-    document.getElementById("groupList").innerHTML = `<div class="empty-tip">暂无群</div>`;
-    return;
-  }
-
-  // 获取群ID列表
-  const groupIds = myGroups.map(g => g.group_id);
-
-  // 获取群信息
-  const { data: groups } = await supabaseClient
-    .from("groups")
-    .select("id,name,creator_id")
-    .in("id", groupIds);
-
-  let groupHtml = "";
-  for (let group of groups) {
-    // 获取群成员数量
-    const { data: members } = await supabaseClient
-      .from("group_members")
-      .select("user_id")
-      .eq("group_id", group.id);
-
-    const memberCount = members?.length || 0;
-
-    // 渲染群项（右键菜单）
-    groupHtml += `
-    <div class="friend-item" 
-         onclick="openGroup('${group.id}','${group.name}')"
-         oncontextmenu="groupRightMenu('${group.id}','${group.creator_id}'); return false;">
-      ${group.name} <span style="float:right">${memberCount}人</span>
-    </div>`;
-  }
-
-  document.getElementById("groupList").innerHTML = groupHtml;
-}
-
-// 群右键菜单（群主解散/成员退出）
-function groupRightMenu(groupId, creatorId) {
-  if (creatorId === myId) {
-    if (confirm("你是群主，确定解散该群吗？")) {
-      dissolveGroup(groupId);
-    }
-  } else {
-    if (confirm("确定退出该群吗？")) {
-      quitGroup(groupId);
-    }
-  }
-}
-
-// 解散群（仅群主）
-async function dissolveGroup(groupId) {
-  // 删除群消息
-  await supabaseClient.from("group_messages").delete().eq("group_id", groupId);
-  // 删除群成员
-  await supabaseClient.from("group_members").delete().eq("group_id", groupId);
-  // 删除群
-  await supabaseClient.from("groups").delete().eq("id", groupId);
-  
-  alert("群已解散");
-  loadGroupList();
-  
-  // 如果正在该群聊天，清空界面
-  if (currentGroupId === groupId) {
-    currentGroupId = null;
-    currentChatId = null;
-    document.getElementById("chatHeader").innerText = "选择好友/群开始聊天";
-    document.getElementById("messagesContainer").innerHTML = "";
-  }
-}
-
-// 退出群（仅非群主）
-async function quitGroup(groupId) {
-  await supabaseClient.from("group_members")
-    .delete()
-    .eq("group_id", groupId)
-    .eq("user_id", myId);
-
-  alert("已退出群");
-  loadGroupList();
-  
-  // 如果正在该群聊天，清空界面
-  if (currentGroupId === groupId) {
-    currentGroupId = null;
-    currentChatId = null;
-    document.getElementById("chatHeader").innerText = "选择好友/群开始聊天";
-    document.getElementById("messagesContainer").innerHTML = "";
-  }
-}
-
-// 打开群聊天
-function openGroup(groupId, groupName) {
-  currentGroupId = groupId;
-  currentChatId = null; // 关闭单聊状态
-  document.getElementById("chatHeader").innerText = "群：" + groupName;
-  
-  // 加载群消息
-  loadGroupMessages();
-}
-
-// 发送群文字消息
-async function sendGroupMessage() {
-  const content = document.getElementById("messageInput").value.trim();
-  if (!content || !currentGroupId) return;
-
-  // 插入群消息
-  await supabaseClient.from("group_messages").insert([
-    { 
-      group_id: currentGroupId, 
-      from_id: myId, 
-      content: content,
-      file_url: null,
-      file_name: null,
-      file_size: null
-    }
-  ]);
-
-  // 清空输入框
-  document.getElementById("messageInput").value = "";
-  
-  // 刷新群消息
-  loadGroupMessages();
-}
-
-// 加载群消息（包含文件卡片）
-async function loadGroupMessages() {
-  const { data: messages } = await supabaseClient
-    .from("group_messages")
-    .select("*")
-    .eq("group_id", currentGroupId)
-    .order("created_at", { ascending: true });
-
-  const messageBox = document.getElementById("messagesContainer");
-  messageBox.innerHTML = messages.map(msg => `
-    <div class="message-item ${msg.from_id === myId ? 'message-mine' : 'message-other'}">
-      ${msg.content ? `${msg.from_id}：${msg.content}` : `${msg.from_id}`}
-      ${msg.file_url ? `
-        <div class="file-card">
-          <div class="file-name">${msg.file_name}</div>
-          <div class="file-size">${formatFileSize(msg.file_size)}</div>
-          <button class="download-btn" onclick="window.open('${msg.file_url}', '_blank')">下载</button>
-        </div>
-      ` : ''}
-    </div>
-  `).join("");
-
-  // 滚动到底部
-  messageBox.scrollTop = messageBox.scrollHeight;
-}
-
-// ========== 智能发送（自动判断单聊/群聊） ==========
-function smartSend() {
+async function smartSend() {
+  const c = document.getElementById("messageInput").value.trim();
+  if (!c && !replyMsgId) return;
   if (currentGroupId) {
-    sendGroupMessage();
+    await supabaseClient.from("group_messages").insert({
+      group_id: currentGroupId, from_id: myId, content: c,
+      reply_to_id: replyMsgId, reply_content: replyContent, reply_nickname: replyNick
+    });
+    cancelReply();
+    loadGroupMessages();
   } else if (currentChatId) {
-    sendMessage();
-  } else {
-    alert("请先选择好友或群聊！");
+    await supabaseClient.from("messages").insert({
+      from_id: myId, to_id: currentChatId, content: c,
+      reply_to_id: replyMsgId, reply_content: replyContent, reply_nickname: replyNick
+    });
+    cancelReply();
+    loadChatMessages();
   }
+  document.getElementById("messageInput").value = "";
+}
+
+// ===================== 群 =====================
+async function createGroup() {
+  const name = prompt("群名");
+  if (!name) return;
+  const gid = generateId();
+  await supabaseClient.from("groups").insert({ id: gid, name: name, creator_id: myId });
+  await supabaseClient.from("group_members").insert({ group_id: gid, user_id: myId });
+  alert("创建成功："+gid); loadGroupList();
+}
+
+async function joinGroup() {
+  const gid = prompt("群ID");
+  if (!gid) return;
+  await supabaseClient.from("group_members").insert({ group_id: gid, user_id: myId });
+  loadGroupList();
+}
+
+async function loadGroupList() {
+  const { data: gm } = await supabaseClient.from("group_members").select("group_id").eq("user_id", myId);
+  if (!gm?.length) { document.getElementById("groupList").innerHTML = "<div class='empty-tip'>暂无群</div>"; return; }
+  const gids = gm.map(i=>i.group_id);
+  const { data: gs } = await supabaseClient.from("groups").select("*").in("id", gids);
+  let html = "";
+  for (let g of gs) {
+    const { data: m } = await supabaseClient.from("group_members").select("user_id").eq("group_id", g.id);
+    html += `<div class="friend-item" onclick="openGroup('${g.id}','${g.name}')">${g.name} (${m?.length||0}人)</div>`;
+  }
+  document.getElementById("groupList").innerHTML = html;
+}
+
+function openGroup(gid, name) {
+  currentGroupId = gid; currentChatId = null;
+  document.getElementById("chatHeader").innerText = "群："+name;
+  loadGroupMessages();
+}
+
+async function loadGroupMessages() {
+  const { data: ms } = await supabaseClient.from("group_messages").select("*").eq("group_id", currentGroupId).order("created_at");
+  const box = document.getElementById("messagesContainer");
+  let html = "";
+  for (let m of ms||[]) {
+    const mine = m.from_id === myId;
+    const nick = await getNick(m.from_id);
+    html += `<div class="message-item ${mine ? 'message-mine' : 'message-other'}">`;
+    if (m.reply_content) html += `<div class="quote"><div class="quote-user">${m.reply_nickname}</div><div class="quote-content">${m.reply_content}</div></div>`;
+    if (m.forward_info) html += `<div style="font-size:12px;opacity:0.8">${m.forward_info}</div>`;
+    html += `${nick}：${m.content||''}`;
+    if (m.file_url) html += `<div class="file-card"><div class="file-name">${m.file_name||'文件'}</div><button class="download-btn" onclick="window.open('${m.file_url}')">下载</button></div>`;
+    html += `<div class="msg-actions">`;
+    html += `<button onclick="startReply('${m.id}','${m.content||''}','${nick}')">回复</button>`;
+    html += `<button onclick="doForward('${m.id}',true,'${m.content||''}','${m.file_url||''}','${nick}')">转发</button>`;
+    html += `</div></div>`;
+  }
+  box.innerHTML = html;
+  box.scrollTop = box.scrollHeight;
+}
+
+// ===================== 文件 =====================
+document.getElementById("fileInput").addEventListener("change", async e=>{
+  const f = e.target.files[0]; if (!f) return;
+  const fn = `${myId}_${Date.now()}_${f.name}`;
+  const { data } = await supabaseClient.storage.from("uploads").upload(`chat/${fn}`, f);
+  const url = supabaseClient.storage.from("uploads").getPublicUrl(`chat/${fn}`).data.publicUrl;
+  if (currentChatId) {
+    await supabaseClient.from("messages").insert({
+      from_id: myId, to_id: currentChatId, content: "", file_url: url, file_name: f.name, file_size: f.size
+    });
+    loadChatMessages();
+  } else if (currentGroupId) {
+    await supabaseClient.from("group_messages").insert({
+      group_id: currentGroupId, from_id: myId, content: "", file_url: url, file_name: f.name, file_size: f.size
+    });
+    loadGroupMessages();
+  }
+  e.target.value = "";
+});
+
+// ===================== 实时 =====================
+function subscribeRealtime() {
+  supabaseClient.removeAllChannels();
+  supabaseClient.channel("chat").on("postgres_changes", { event: "*", schema: "public", table: "messages" }, ()=>{ if(currentChatId)loadChatMessages() }).subscribe();
+  supabaseClient.channel("group").on("postgres_changes", { event: "*", schema: "public", table: "group_messages" }, ()=>{ if(currentGroupId)loadGroupMessages() }).subscribe();
+}
+
+// ===================== 表情 =====================
+function toggleEmoji() {
+  const p = document.getElementById("emojiPanel");
+  p.style.display = p.style.display==="none" ? "grid" : "none";
+}
+function insertEmoji(e) {
+  document.getElementById("messageInput").value += e;
+  toggleEmoji();
 }
 </script>
 </body>
