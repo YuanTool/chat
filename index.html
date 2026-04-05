@@ -325,7 +325,7 @@ function selectFriend(id) {
 
 function startReply(msgId, content, nick) {
   replyMsgId = msgId;
-  replyContent = content.substring(0,30);
+  replyContent = content?.substring(0,30) || "";
   replyNick = nick;
   const p = document.getElementById("replyPreview");
   document.getElementById("replyToText").innerText = `${nick}: ${replyContent}`;
@@ -333,71 +333,62 @@ function startReply(msgId, content, nick) {
 }
 
 function cancelReply() {
-  replyMsgId = null; replyContent = ""; replyNick = "";
+  replyMsgId = null;
+  replyContent = "";
+  replyNick = "";
   document.getElementById("replyPreview").style.display = "none";
 }
 
-async function doForward(msgId, isGroup, origContent, origFile, origNick) {
-  const { data: friends } = await supabaseClient.from("friend_requests").select("to_id").eq("from_id", myId).eq("status", "accepted");
-  const { data: friendsR } = await supabaseClient.from("friend_requests").select("from_id").eq("to_id", myId).eq("status", "accepted");
-  const { data: groups } = await supabaseClient.from("group_members").select("group_id").eq("user_id", myId);
-  
-  let friendList = [...(friends||[]).map(i=>i.to_id), ...(friendsR||[]).map(i=>i.from_id)];
-  let groupList = groups?.map(i=>i.group_id) || [];
-  
-  let options = [];
-  for(let fid of friendList) {
-    const n = await getNick(fid);
-    options.push(`好友: ${n} (${fid})`);
-  }
-  for(let gid of groupList) {
-    const { data: g } = await supabaseClient.from("groups").select("name").eq("id", gid).single();
-    options.push(`群聊: ${g.name} (${gid})`);
-  }
-  
-  if(options.length === 0) return alert("没有可转发的好友/群");
-  
-  const target = prompt("请选择转发目标（输入序号）:\n" + options.map((o,i)=>`${i+1}. ${o}`).join("\n"));
-  if(!target) return;
-  const idx = parseInt(target)-1;
-  if(idx <0 || idx >= options.length) return alert("序号无效");
-  
-  const isToFriend = options[idx].startsWith("好友:");
-  const targetId = options[idx].split("(")[1].split(")")[0];
-  const text = origContent || "[文件]";
-  const info = `转发自 ${origNick}: ${text.substring(0,20)}`;
+async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
+  const { data: friends1 } = await supabaseClient.from("friend_requests").select("to_id").eq("from_id", myId).eq("status", "accepted");
+  const { data: friends2 } = await supabaseClient.from("friend_requests").select("from_id").eq("to_id", myId).eq("status", "accepted");
+  const friendIds = [...new Set([...(friends1||[]).map(i=>i.to_id), ...(friends2||[]).map(i=>i.from_id)])];
 
-  if (isGroup) {
-    if(isToFriend) {
-      await supabaseClient.from("messages").insert({
-        from_id: myId, to_id: targetId, content: text,
-        forward_info: info, file_url: origFile, file_name: null, file_size: null
-      });
-      alert("已转发");
-    } else {
-      await supabaseClient.from("group_messages").insert({
-        group_id: targetId, from_id: myId, content: text,
-        forward_info: info, file_url: origFile, file_name: null, file_size: null
-      });
-      alert("已转发");
-    }
-    loadGroupMessages();
-  } else {
-    if(isToFriend) {
-      await supabaseClient.from("messages").insert({
-        from_id: myId, to_id: targetId, content: text,
-        forward_info: info, file_url: origFile, file_name: null, file_size: null
-      });
-      alert("已转发");
-    } else {
-      await supabaseClient.from("group_messages").insert({
-        group_id: targetId, from_id: myId, content: text,
-        forward_info: info, file_url: origFile, file_name: null, file_size: null
-      });
-      alert("已转发");
-    }
-    loadChatMessages();
+  const { data: myGroups } = await supabaseClient.from("group_members").select("group_id").eq("user_id", myId);
+  const groupIds = myGroups?.map(g=>g.group_id) || [];
+
+  const friendList = [];
+  for(let fid of friendIds){
+    const n = await getNick(fid);
+    friendList.push({ type:"friend", id:fid, name:n });
   }
+  const groupList = [];
+  for(let gid of groupIds){
+    const { data:g } = await supabaseClient.from("groups").select("name").eq("id", gid).single();
+    groupList.push({ type:"group", id:gid, name:g?.name || "群" });
+  }
+
+  const allTargets = [...friendList, ...groupList];
+  if(allTargets.length === 0) return alert("无可用转发目标");
+
+  const tip = allTargets.map((t,i)=>`${i+1}. ${t.type==='friend'?'好友':'群'}: ${t.name}`).join("\n");
+  const input = prompt("转发到（输入序号）：\n"+tip);
+  if(!input) return;
+  const idx = parseInt(input)-1;
+  if(isNaN(idx) || idx<0 || idx>=allTargets.length) return alert("序号无效");
+
+  const target = allTargets[idx];
+  const text = origContent || "[文件]";
+  const forwardInfo = `转发自 ${origNick}: ${text.slice(0,20)}`;
+
+  if(target.type === "friend"){
+    await supabaseClient.from("messages").insert({
+      from_id: myId,
+      to_id: target.id,
+      content: text,
+      file_url: origFile || null,
+      forward_info: forwardInfo
+    });
+  } else {
+    await supabaseClient.from("group_messages").insert({
+      group_id: target.id,
+      from_id: myId,
+      content: text,
+      file_url: origFile || null,
+      forward_info: forwardInfo
+    });
+  }
+  alert("转发成功");
 }
 
 async function loadChatMessages() {
@@ -440,24 +431,32 @@ async function smartSend() {
   const c = document.getElementById("messageInput").value.trim();
 
   if (!currentChatId && !currentGroupId) {
-    alert("请先选择聊天对象");
+    alert("请先选择聊天");
     return;
   }
 
-  if (currentGroupId) {
-    await supabaseClient.from("group_messages").insert({
-      group_id: currentGroupId, from_id: myId, content: c,
-      reply_to_id: replyMsgId, reply_content: replyContent, reply_nickname: replyNick
-    });
-    cancelReply();
-    loadGroupMessages();
-  } else if (currentChatId) {
+  if (currentChatId) {
     await supabaseClient.from("messages").insert({
-      from_id: myId, to_id: currentChatId, content: c,
-      reply_to_id: replyMsgId, reply_content: replyContent, reply_nickname: replyNick
+      from_id: myId,
+      to_id: currentChatId,
+      content: c,
+      reply_to_id: replyMsgId,
+      reply_content: replyContent,
+      reply_nickname: replyNick
     });
     cancelReply();
     loadChatMessages();
+  } else if (currentGroupId) {
+    await supabaseClient.from("group_messages").insert({
+      group_id: currentGroupId,
+      from_id: myId,
+      content: c,
+      reply_to_id: replyMsgId,
+      reply_content: replyContent,
+      reply_nickname: replyNick
+    });
+    cancelReply();
+    loadGroupMessages();
   }
 
   document.getElementById("messageInput").value = "";
@@ -509,11 +508,11 @@ async function openGroup(gid, name, creatorId) {
 }
 
 async function dissolveGroup(gid) {
-  if(!confirm("群主身份，确定要解散该群聊吗？解散后所有成员将无法再访问此群")) return;
+  if(!confirm("确定解散该群？")) return;
   await supabaseClient.from("group_members").delete().eq("group_id", gid);
   await supabaseClient.from("group_messages").delete().eq("group_id", gid);
   await supabaseClient.from("groups").delete().eq("id", gid);
-  alert("群聊已解散");
+  alert("群已解散");
   loadGroupList();
   currentGroupId = null;
   document.getElementById("chatTitle").innerText = "选择聊天";
