@@ -17,15 +17,15 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
 .btn{background:#4F46E5;color:white;border:none;padding:10px 12px;border-radius:6px;margin:5px 0;width:100%;cursor:pointer;font-size:14px;}
 .btn-request{background:#f59e0b}
 .section-title{font-weight:bold;margin-top:20px;margin-bottom:10px;font-size:16px;color:#333;}
-.friend-list,.request-list,.group-list{flex:1;overflow-y:auto;margin-top:5px;}
-.friend-item,.request-item{padding:10px;background:#f9f9f9;margin:5px 0;border-radius:6px;cursor:pointer;font-size:14px;}
+.friend-list,.request-list,.group-list{flex:1;overflow-y:auto;margin-top:5px;position:relative;}
+.friend-item,.request-item,.group-item{padding:10px;background:#f9f9f9;margin:5px 0;border-radius:6px;cursor:pointer;font-size:14px;position:relative;}
 .request-item{display:flex;justify-content:space-between;align-items:center;background:#fffbeb;border:1px solid #f59e0b;}
 .request-btn-group button{padding:4px 8px;border:none;border-radius:4px;margin-left:5px;cursor:pointer;font-size:12px;}
 .btn-accept{background:#10b981;color:white}
 .btn-reject{background:#ef4444;color:white}
 .empty-tip{color:#999;padding:10px;font-size:14px;text-align:center;}
 .chat-area{flex:1;display:flex;flex-direction:column;background:white;}
-.chat-header{padding:15px;border-bottom:1px solid #ddd;font-weight:bold;font-size:16px;}
+.chat-header{padding:15px;border-bottom:1px solid #ddd;font-weight:bold;font-size:16px;display:flex;justify-content:space-between;align-items:center;}
 .messages-container{flex:1;padding:15px;overflow-y:auto;background:#f9fafb;}
 .message-item{margin:8px 0;padding:10px 14px;border-radius:8px;max-width:70%;font-size:14px;display:flex;flex-direction:column;}
 .message-mine{background:#4F46E5;color:white;margin-left:auto;align-items:flex-end;}
@@ -57,6 +57,12 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
 .reply-preview{padding:8px 12px;background:#eef;border-radius:6px;margin-bottom:6px;font-size:14px;display:flex;justify-content:space-between;align-items:center;}
 .reply-preview span{font-weight:bold;color:#2563eb}
 .reply-close{background:none;border:none;color:#666;cursor:pointer;}
+
+/* 右键菜单样式 */
+.context-menu{position:absolute;background:white;border:1px solid #ddd;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.1);z-index:999;min-width:120px;display:none;}
+.context-menu-item{padding:8px 12px;cursor:pointer;font-size:14px;}
+.context-menu-item:hover{background:#f3f4f6;}
+.context-menu-item.danger{color:#ef4444;}
 </style>
 </head>
 <body>
@@ -73,7 +79,9 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
     <button class="btn btn-request" onclick="toggleRequestList()">📩 好友申请</button>
 
     <div class="section-title">好友列表</div>
-    <div class="friend-list" id="friendList"><div class="empty-tip">暂无好友</div></div>
+    <div class="friend-list" id="friendList" oncontextmenu="return false;">
+      <div class="empty-tip">暂无好友</div>
+    </div>
 
     <div class="section-title" id="requestTitle" style="display:none">好友申请</div>
     <div class="request-list" id="requestList" style="display:none"><div class="empty-tip">暂无申请</div></div>
@@ -81,11 +89,16 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
     <div class="section-title">群聊</div>
     <button class="btn" onclick="createGroup()">➕ 创建群</button>
     <button class="btn" onclick="joinGroup()">➕ 加入群</button>
-    <div class="group-list" id="groupList"><div class="empty-tip">暂无群</div></div>
+    <div class="group-list" id="groupList" oncontextmenu="return false;">
+      <div class="empty-tip">暂无群</div>
+    </div>
   </div>
 
   <div class="chat-area">
-    <div class="chat-header" id="chatHeader">选择聊天</div>
+    <div class="chat-header" id="chatHeader">
+      <span id="chatTitle">选择聊天</span>
+      <span id="groupActionBtn" style="display:none;"></span>
+    </div>
     <div class="messages-container" id="messagesContainer"></div>
     <div id="replyPreview" style="display:none;padding:8px 12px;background:#eef;border-radius:6px;margin:8px;">
       回复：<span id="replyToText"></span>
@@ -106,6 +119,14 @@ body{font-family:Arial;background:#f1f1f1;height:100vh;overflow:hidden}
   </div>
 </div>
 
+<!-- 右键菜单 -->
+<div class="context-menu" id="friendContextMenu">
+  <div class="context-menu-item danger" id="deleteFriendBtn">删除好友</div>
+</div>
+<div class="context-menu" id="groupContextMenu">
+  <div class="context-menu-item danger" id="exitGroupBtn">退出群聊</div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SUPABASE_URL = "https://hlhtcciaafwmxxtshtaa.supabase.co";
@@ -116,11 +137,18 @@ let myId;
 let myNick = "";
 let currentChatId = null;
 let currentGroupId = null;
+let currentGroupCreator = null;
 let replyMsgId = null;
 let replyContent = "";
 let replyNick = "";
 let requestVisible = false;
 const MAX_FILE_SIZE = 50 * 1024 * 1024;
+
+// 右键菜单相关
+let currentRightClickFriendId = null;
+let currentRightClickGroupId = null;
+const friendContextMenu = document.getElementById('friendContextMenu');
+const groupContextMenu = document.getElementById('groupContextMenu');
 
 window.onload = async () => {
   supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -138,12 +166,33 @@ window.onload = async () => {
     await supabaseClient.from("users").update({ nickname: newNick }).eq("id", myId);
     myNick = newNick;
     alert("昵称已更新");
+    loadFriendList();
+    if(currentGroupId) loadGroupMessages();
   };
+
+  // 绑定右键菜单事件
+  document.getElementById('deleteFriendBtn').onclick = deleteCurrentFriend;
+  document.getElementById('exitGroupBtn').onclick = exitCurrentGroup;
+  document.addEventListener('click', closeAllContextMenus);
 
   subscribeRealtime();
   loadFriendList();
   loadFriendRequests();
   loadGroupList();
+
+  // 定时清理（兜底）
+  setInterval(async () => {
+    // 清理聊天记录
+    await supabaseClient.from("messages").delete().lt("created_at", new Date(Date.now() - 3600000).toISOString());
+    await supabaseClient.from("group_messages").delete().lt("created_at", new Date(Date.now() - 3600000).toISOString());
+    // 清理文件
+    const { data: oldFiles } = await supabaseClient.storage.from("uploads").list("chat", {
+      createdBefore: new Date(Date.now() - 900000).toISOString()
+    });
+    if(oldFiles?.length) {
+      await supabaseClient.storage.from("uploads").remove(oldFiles.map(f => `chat/${f.name}`));
+    }
+  }, 60000);
 };
 
 function generateId() {
@@ -158,6 +207,59 @@ async function getNick(uid) {
 
 function toggleSidebar() {
   document.getElementById("sidebar").classList.toggle("show");
+}
+
+// ===================== 右键菜单 =====================
+function closeAllContextMenus() {
+  friendContextMenu.style.display = 'none';
+  groupContextMenu.style.display = 'none';
+}
+
+function showFriendContextMenu(e, friendId) {
+  e.preventDefault();
+  currentRightClickFriendId = friendId;
+  friendContextMenu.style.left = e.pageX + 'px';
+  friendContextMenu.style.top = e.pageY + 'px';
+  friendContextMenu.style.display = 'block';
+}
+
+function showGroupContextMenu(e, groupId) {
+  e.preventDefault();
+  currentRightClickGroupId = groupId;
+  groupContextMenu.style.left = e.pageX + 'px';
+  groupContextMenu.style.top = e.pageY + 'px';
+  groupContextMenu.style.display = 'block';
+}
+
+async function deleteCurrentFriend() {
+  if(!currentRightClickFriendId || !confirm("确定要删除该好友吗？")) return;
+  // 删除双向好友关系
+  await supabaseClient.from("friend_requests").delete()
+    .or(`(from_id.eq.${myId}.and.to_id.eq.${currentRightClickFriendId})`
+    + `, (from_id.eq.${currentRightClickFriendId}.and.to_id.eq.${myId})`);
+  alert("好友已删除");
+  loadFriendList();
+  if(currentChatId === currentRightClickFriendId) {
+    currentChatId = null;
+    document.getElementById("chatTitle").innerText = "选择聊天";
+    document.getElementById("messagesContainer").innerHTML = "";
+  }
+  closeAllContextMenus();
+}
+
+async function exitCurrentGroup() {
+  if(!currentRightClickGroupId || !confirm("确定要退出该群聊吗？")) return;
+  await supabaseClient.from("group_members").delete()
+    .eq("group_id", currentRightClickGroupId).eq("user_id", myId);
+  alert("已退出群聊");
+  loadGroupList();
+  if(currentGroupId === currentRightClickGroupId) {
+    currentGroupId = null;
+    document.getElementById("chatTitle").innerText = "选择聊天";
+    document.getElementById("groupActionBtn").style.display = "none";
+    document.getElementById("messagesContainer").innerHTML = "";
+  }
+  closeAllContextMenus();
 }
 
 // ===================== 好友 =====================
@@ -216,14 +318,17 @@ async function loadFriendList() {
   let html = "";
   for (let id of uniq) {
     const n = await getNick(id);
-    html += `<div class="friend-item" onclick="selectFriend('${id}')">${n}</div>`;
+    html += `<div class="friend-item" onclick="selectFriend('${id}')" oncontextmenu="showFriendContextMenu(event, '${id}')">${n}</div>`;
   }
   el.innerHTML = html;
 }
 
 function selectFriend(id) {
-  currentChatId = id; currentGroupId = null;
-  getNick(id).then(n => document.getElementById("chatHeader").innerText = "和 "+n+" 聊天");
+  currentChatId = id; currentGroupId = null; currentGroupCreator = null;
+  getNick(id).then(n => {
+    document.getElementById("chatTitle").innerText = "和 "+n+" 聊天";
+    document.getElementById("groupActionBtn").style.display = "none";
+  });
   if (window.innerWidth<=600) toggleSidebar();
   loadChatMessages();
 }
@@ -245,23 +350,65 @@ function cancelReply() {
 
 // ===================== 转发 =====================
 async function doForward(msgId, isGroup, origContent, origFile, origNick) {
-  const toC = prompt("转发到好友ID");
-  if (!toC) return;
+  // 选择转发目标
+  const { data: friends } = await supabaseClient.from("friend_requests").select("to_id").eq("from_id", myId).eq("status", "accepted");
+  const { data: friendsR } = await supabaseClient.from("friend_requests").select("from_id").eq("to_id", myId).eq("status", "accepted");
+  const { data: groups } = await supabaseClient.from("group_members").select("group_id").eq("user_id", myId);
+  
+  let friendList = [...(friends||[]).map(i=>i.to_id), ...(friendsR||[]).map(i=>i.from_id)];
+  let groupList = groups?.map(i=>i.group_id) || [];
+  
+  let options = [];
+  for(let fid of friendList) {
+    const n = await getNick(fid);
+    options.push(`好友: ${n} (${fid})`);
+  }
+  for(let gid of groupList) {
+    const { data: g } = await supabaseClient.from("groups").select("name").eq("id", gid).single();
+    options.push(`群聊: ${g.name} (${gid})`);
+  }
+  
+  if(options.length === 0) return alert("没有可转发的好友/群");
+  
+  const target = prompt("请选择转发目标（输入序号）:\n" + options.map((o,i)=>`${i+1}. ${o}`).join("\n"));
+  if(!target) return;
+  const idx = parseInt(target)-1;
+  if(idx <0 || idx >= options.length) return alert("序号无效");
+  
+  const isToFriend = options[idx].startsWith("好友:");
+  const targetId = options[idx].split("(")[1].split(")")[0];
   const text = origContent || "[文件]";
   const info = `转发自 ${origNick}: ${text.substring(0,20)}`;
 
   if (isGroup) {
-    await supabaseClient.from("group_messages").insert({
-      group_id: currentGroupId, from_id: myId, content: text,
-      forward_info: info, file_url: origFile, file_name: null, file_size: null
-    });
+    if(isToFriend) {
+      await supabaseClient.from("messages").insert({
+        from_id: myId, to_id: targetId, content: text,
+        forward_info: info, file_url: origFile, file_name: null, file_size: null
+      });
+      alert("已转发");
+    } else {
+      await supabaseClient.from("group_messages").insert({
+        group_id: targetId, from_id: myId, content: text,
+        forward_info: info, file_url: origFile, file_name: null, file_size: null
+      });
+      alert("已转发");
+    }
     loadGroupMessages();
   } else {
-    await supabaseClient.from("messages").insert({
-      from_id: myId, to_id: toC, content: text,
-      forward_info: info, file_url: origFile, file_name: null, file_size: null
-    });
-    alert("已转发");
+    if(isToFriend) {
+      await supabaseClient.from("messages").insert({
+        from_id: myId, to_id: targetId, content: text,
+        forward_info: info, file_url: origFile, file_name: null, file_size: null
+      });
+      alert("已转发");
+    } else {
+      await supabaseClient.from("group_messages").insert({
+        group_id: targetId, from_id: myId, content: text,
+        forward_info: info, file_url: origFile, file_name: null, file_size: null
+      });
+      alert("已转发");
+    }
     loadChatMessages();
   }
 }
@@ -349,18 +496,44 @@ async function loadGroupList() {
   let html = "";
   for (let g of gs) {
     const { data: m } = await supabaseClient.from("group_members").select("user_id").eq("group_id", g.id);
-    html += `<div class="friend-item" onclick="openGroup('${g.id}','${g.name}')">${g.name} (${m?.length||0}人)</div>`;
+    html += `<div class="friend-item group-item" onclick="openGroup('${g.id}','${g.name}','${g.creator_id}')" oncontextmenu="showGroupContextMenu(event, '${g.id}')">${g.name} (${m?.length||0}人)</div>`;
   }
   document.getElementById("groupList").innerHTML = html;
 }
 
-function openGroup(gid, name) {
-  currentGroupId = gid; currentChatId = null;
-  document.getElementById("chatHeader").innerText = "群："+name;
+async function openGroup(gid, name, creatorId) {
+  currentGroupId = gid; currentChatId = null; currentGroupCreator = creatorId;
+  document.getElementById("chatTitle").innerText = "群："+name;
+  
+  // 群主显示解散按钮
+  const actionBtn = document.getElementById("groupActionBtn");
+  if(creatorId === myId) {
+    actionBtn.style.display = "block";
+    actionBtn.innerHTML = `<button style="background:#ef4444;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;" onclick="dissolveGroup('${gid}')">解散群聊</button>`;
+  } else {
+    actionBtn.style.display = "none";
+  }
+  
+  if (window.innerWidth<=600) toggleSidebar();
   loadGroupMessages();
 }
 
+async function dissolveGroup(gid) {
+  if(!confirm("群主身份，确定要解散该群聊吗？解散后所有成员将无法再访问此群")) return;
+  // 删除群成员、群消息、群本身
+  await supabaseClient.from("group_members").delete().eq("group_id", gid);
+  await supabaseClient.from("group_messages").delete().eq("group_id", gid);
+  await supabaseClient.from("groups").delete().eq("id", gid);
+  alert("群聊已解散");
+  loadGroupList();
+  currentGroupId = null;
+  document.getElementById("chatTitle").innerText = "选择聊天";
+  document.getElementById("groupActionBtn").style.display = "none";
+  document.getElementById("messagesContainer").innerHTML = "";
+}
+
 async function loadGroupMessages() {
+  if(!currentGroupId) return;
   const { data: ms } = await supabaseClient.from("group_messages").select("*").eq("group_id", currentGroupId).order("created_at");
   const box = document.getElementById("messagesContainer");
   let html = "";
@@ -384,6 +557,7 @@ async function loadGroupMessages() {
 // ===================== 文件 =====================
 document.getElementById("fileInput").addEventListener("change", async e=>{
   const f = e.target.files[0]; if (!f) return;
+  if(f.size > MAX_FILE_SIZE) return alert("文件不能超过50MB");
   const fn = `${myId}_${Date.now()}_${f.name}`;
   const { data } = await supabaseClient.storage.from("uploads").upload(`chat/${fn}`, f);
   const url = supabaseClient.storage.from("uploads").getPublicUrl(`chat/${fn}`).data.publicUrl;
@@ -406,6 +580,8 @@ function subscribeRealtime() {
   supabaseClient.removeAllChannels();
   supabaseClient.channel("chat").on("postgres_changes", { event: "*", schema: "public", table: "messages" }, ()=>{ if(currentChatId)loadChatMessages() }).subscribe();
   supabaseClient.channel("group").on("postgres_changes", { event: "*", schema: "public", table: "group_messages" }, ()=>{ if(currentGroupId)loadGroupMessages() }).subscribe();
+  supabaseClient.channel("friends").on("postgres_changes", { event: "*", schema: "public", table: "friend_requests" }, ()=>{ loadFriendList(); loadFriendRequests() }).subscribe();
+  supabaseClient.channel("groups").on("postgres_changes", { event: "*", schema: "public", table: "groups" }, ()=>{ loadGroupList() }).subscribe();
 }
 
 // ===================== 表情 =====================
