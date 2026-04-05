@@ -212,7 +212,7 @@ window.onload = async () => {
           createdBefore: fifteenMinAgo
         });
         if(oldFiles?.length) {
-          await supabaseClient.storage.from("uploads").remove(oldFiles.map(f => `chat/${f.name}`));
+          await supabaseClient.storage.from("uploads").remove(oldFiles.map(f => "chat/" + f.name));
         }
       } catch (e) {
         console.log("清理过期数据失败:", e);
@@ -256,8 +256,8 @@ function closeAllContextMenus() {
 function showFriendContextMenu(e, friendId) {
   e.preventDefault();
   currentRightClickFriendId = friendId;
-  friendContextMenu.style.left = `${e.pageX}px`;
-  friendContextMenu.style.top = `${e.pageY}px`;
+  friendContextMenu.style.left = e.pageX + 'px';
+  friendContextMenu.style.top = e.pageY + 'px';
   friendContextMenu.style.display = 'block';
 }
 
@@ -265,8 +265,8 @@ function showFriendContextMenu(e, friendId) {
 function showGroupContextMenu(e, groupId) {
   e.preventDefault();
   currentRightClickGroupId = groupId;
-  groupContextMenu.style.left = `${e.pageX}px`;
-  groupContextMenu.style.top = `${e.pageY}px`;
+  groupContextMenu.style.left = e.pageX + 'px';
+  groupContextMenu.style.top = e.pageY + 'px';
   groupContextMenu.style.display = 'block';
 }
 
@@ -275,8 +275,7 @@ async function deleteCurrentFriend() {
   if(!currentRightClickFriendId || !confirm("确定要删除该好友吗？")) return;
   try {
     await supabaseClient.from("friend_requests").delete()
-      .or(`(from_id.eq.${myId},to_id.eq.${currentRightClickFriendId}),
-           (from_id.eq.${currentRightClickFriendId},to_id.eq.${myId})`);
+      .or("(from_id.eq." + myId + ",to_id.eq." + currentRightClickFriendId + "), (from_id.eq." + currentRightClickFriendId + ",to_id.eq." + myId + ")");
     alert("好友已删除");
     loadFriendList();
     if(currentChatId === currentRightClickFriendId) {
@@ -331,8 +330,7 @@ async function sendFriendRequest(tid) {
     // 检查是否已发送过申请
     const { data: exist } = await supabaseClient.from("friend_requests")
       .select("id")
-      .or(`(from_id.eq.${myId},to_id.eq.${tid}),
-           (from_id.eq.${tid},to_id.eq.${myId})`)
+      .or("(from_id.eq." + myId + ",to_id.eq." + tid + "), (from_id.eq." + tid + ",to_id.eq." + myId + ")")
       .limit(1);
     
     if (exist?.length) return alert("已发送过好友申请/已是好友");
@@ -374,15 +372,13 @@ async function loadFriendRequests() {
     let html = "";
     for (let req of requests) {
       const nick = await getNick(req.from_id);
-      html += `
-        <div class="request-item">
-          <span>${nick} (${req.from_id})</span>
-          <div class="request-btn-group">
-            <button class="btn-accept" onclick="acceptFriendRequest('${req.id}')">同意</button>
-            <button class="btn-reject" onclick="rejectFriendRequest('${req.id}')">拒绝</button>
-          </div>
-        </div>
-      `;
+      html += '<div class="request-item">' +
+                '<span>' + nick + ' (' + req.from_id + ')</span>' +
+                '<div class="request-btn-group">' +
+                  '<button class="btn-accept" onclick="acceptFriendRequest(\'' + req.id + '\')">同意</button>' +
+                  '<button class="btn-reject" onclick="rejectFriendRequest(\'' + req.id + '\')">拒绝</button>' +
+                '</div>' +
+              '</div>';
     }
     el.innerHTML = html;
   } catch (e) {
@@ -446,11 +442,11 @@ async function loadFriendList() {
     let html = "";
     for (let id of friendIds) {
       const nick = await getNick(id);
-      html += `<div class="friend-item" 
-                onclick="selectFriend('${id}')" 
-                oncontextmenu="showFriendContextMenu(event, '${id}')">
-                ${nick} (${id})
-              </div>`;
+      html += '<div class="friend-item" ' +
+                'onclick="selectFriend(\'' + id + '\')" ' +
+                'oncontextmenu="showFriendContextMenu(event, \'' + id + '\')">' +
+                nick + ' (' + id + ')' +
+              '</div>';
     }
     el.innerHTML = html;
   } catch (e) {
@@ -466,7 +462,7 @@ function selectFriend(id) {
   currentGroupCreator = null;
   
   getNick(id).then(nick => {
-    document.getElementById("chatTitle").innerText = `和 ${nick} 聊天`;
+    document.getElementById("chatTitle").innerText = "和 " + nick + " 聊天";
     document.getElementById("groupActionBtn").style.display = "none";
   });
   
@@ -481,7 +477,7 @@ function startReply(msgId, content, nick) {
   replyNick = nick || "未知用户";
   
   const preview = document.getElementById("replyPreview");
-  document.getElementById("replyToText").innerText = `${replyNick}: ${replyContent || '无内容'}`;
+  document.getElementById("replyToText").innerText = replyNick + ": " + (replyContent || '无内容');
   preview.style.display = "block";
 }
 
@@ -517,7 +513,7 @@ async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
       const friendMap = {};
       friendIds.forEach((fid, idx) => {
         friendMap[idx+1] = fid;
-        friendTip += `${idx+1}. ${await getNick(fid)} (${fid})\n`;
+        friendTip += (idx+1) + ". " + await getNick(fid) + " (" + fid + ")\n";
       });
       
       const friendIdx = prompt(friendTip);
@@ -539,7 +535,7 @@ async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
         const gid = groupIds[idx];
         const { data: group } = await supabaseClient.from("groups").select("name").eq("id", gid).single();
         groupMap[idx+1] = gid;
-        groupTip += `${idx+1}. ${group?.name || "未命名群"} (${gid})\n`;
+        groupTip += (idx+1) + ". " + (group?.name || "未命名群") + " (" + gid + ")\n";
       }
       
       const groupIdx = prompt(groupTip);
@@ -552,7 +548,7 @@ async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
     }
 
     // 2. 第二步：模拟发消息（核心！和手动发消息逻辑完全一致）
-    const forwardText = `【转发自${origNick}】${origContent || "[文件]"}`;
+    const forwardText = "【转发自" + origNick + "】" + (origContent || "[文件]");
     
     if(targetType === "friend") {
       // 转发到好友 = 给这个好友发一条新消息
@@ -592,7 +588,7 @@ async function doForward(msgId, isGroupMsg, origContent, origFile, origNick) {
 
   } catch (e) {
     console.error("转发失败:", e);
-    alert(`转发失败：${e.message || '未知错误'}`);
+    alert("转发失败：" + (e.message || '未知错误'));
   }
 }
 // ==========================================================================
@@ -624,37 +620,37 @@ async function loadChatMessages() {
       const isMine = msg.from_id === myId;
       const senderNick = await getNick(msg.from_id);
       
-      html += `<div class="message-item ${isMine ? 'message-mine' : 'message-other'}">`;
+      html += '<div class="message-item ' + (isMine ? 'message-mine' : 'message-other') + '">';
       
       // 回复引用（保留你原本正常的逻辑）
       if (msg.reply_content) {
-        html += `<div class="quote">
-                  <div class="quote-user">${msg.reply_nickname || '未知用户'}</div>
-                  <div class="quote-content">${msg.reply_content}</div>
-                </div>`;
+        html += '<div class="quote">' +
+                  '<div class="quote-user">' + (msg.reply_nickname || '未知用户') + '</div>' +
+                  '<div class="quote-content">' + msg.reply_content + '</div>' +
+                '</div>';
       }
       
       // 消息内容
-      html += `${msg.content || ''}`;
+      html += msg.content || '';
       
       // 文件卡片
       if (msg.file_url) {
-        html += `<div class="file-card">
-                  <div class="file-name">${msg.file_name || '文件'}</div>
-                  <button class="download-btn" onclick="window.open('${msg.file_url}')">下载</button>
-                </div>`;
+        html += '<div class="file-card">' +
+                  '<div class="file-name">' + (msg.file_name || '文件') + '</div>' +
+                  '<button class="download-btn" onclick="window.open(\'' + msg.file_url + '\')">下载</button>' +
+                '</div>';
       }
       
       // 消息操作按钮
-      html += `<div class="msg-actions">`;
+      html += '<div class="msg-actions">';
       if (!isMine) {
-        html += `<button onclick="startReply('${msg.id}','${msg.content||''}','${senderNick}')">回复</button>`;
+        html += '<button onclick="startReply(\'' + msg.id + '\',\'' + (msg.content||'') + '\',\'' + senderNick + '\')">回复</button>';
       }
-      html += `<button onclick="doForward('${msg.id}',false,'${msg.content||''}','${msg.file_url||''}','${senderNick}')">转发</button>`;
+      html += '<button onclick="doForward(\'' + msg.id + '\',false,\'' + (msg.content||'') + '\',\'' + (msg.file_url||'') + '\',\'' + senderNick + '\')">转发</button>';
       if (isMine) {
-        html += `<button onclick="revokeMsg('${msg.id}')">撤回</button>`;
+        html += '<button onclick="revokeMsg(\'' + msg.id + '\')">撤回</button>';
       }
-      html += `</div></div>`;
+      html += '</div></div>';
     }
 
     container.innerHTML = html;
@@ -738,7 +734,7 @@ async function smartSend() {
 
   } catch (e) {
     console.error("发送消息失败:", e);
-    alert(`发送失败：${e.message || '请检查网络或重试'}`);
+    alert("发送失败：" + (e.message || '请检查网络或重试'));
   }
 }
 
@@ -764,7 +760,7 @@ async function createGroup() {
       user_id: myId 
     });
     
-    alert(`群聊创建成功！群ID：${groupId}`);
+    alert("群聊创建成功！群ID：" + groupId);
     loadGroupList();
 
   } catch (e) {
@@ -840,11 +836,11 @@ async function loadGroupList() {
         .select("user_id")
         .eq("group_id", group.id);
       
-      html += `<div class="friend-item group-item" 
-                onclick="openGroup('${group.id}','${group.name}','${group.creator_id}')" 
-                oncontextmenu="showGroupContextMenu(event, '${group.id}')">
-                ${group.name} (${members?.length || 0}人)
-              </div>`;
+      html += '<div class="friend-item group-item" ' +
+                'onclick="openGroup(\'' + group.id + '\',\'' + group.name + '\',\'' + group.creator_id + '\')" ' +
+                'oncontextmenu="showGroupContextMenu(event, \'' + group.id + '\')">' +
+                group.name + ' (' + (members?.length || 0) + '人)' +
+              '</div>';
     }
     document.getElementById("groupList").innerHTML = html;
 
@@ -860,13 +856,13 @@ async function openGroup(gid, name, creatorId) {
   currentChatId = null; 
   currentGroupCreator = creatorId;
   
-  document.getElementById("chatTitle").innerText = `群聊：${name}`;
+  document.getElementById("chatTitle").innerText = "群聊：" + name;
   
   // 群主显示解散按钮
   const actionBtn = document.getElementById("groupActionBtn");
   if(creatorId === myId) {
     actionBtn.style.display = "block";
-    actionBtn.innerHTML = `<button style="background:#ef4444;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;" onclick="dissolveGroup('${gid}')">解散群聊</button>`;
+    actionBtn.innerHTML = '<button style="background:#ef4444;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;" onclick="dissolveGroup(\'' + gid + '\')">解散群聊</button>';
   } else {
     actionBtn.style.display = "none";
   }
@@ -917,32 +913,32 @@ async function loadGroupMessages() {
       const isMine = msg.from_id === myId;
       const senderNick = await getNick(msg.from_id);
       
-      html += `<div class="message-item ${isMine ? 'message-mine' : 'message-other'}">`;
+      html += '<div class="message-item ' + (isMine ? 'message-mine' : 'message-other') + '">';
       
       // 回复引用（保留你原本正常的逻辑）
       if (msg.reply_content) {
-        html += `<div class="quote">
-                  <div class="quote-user">${msg.reply_nickname || '未知用户'}</div>
-                  <div class="quote-content">${msg.reply_content}</div>
-                </div>`;
+        html += '<div class="quote">' +
+                  '<div class="quote-user">' + (msg.reply_nickname || '未知用户') + '</div>' +
+                  '<div class="quote-content">' + msg.reply_content + '</div>' +
+                '</div>';
       }
       
       // 消息内容（显示发送者昵称）
-      html += `${senderNick}：${msg.content || ''}`;
+      html += senderNick + "：" + (msg.content || '');
       
       // 文件卡片
       if (msg.file_url) {
-        html += `<div class="file-card">
-                  <div class="file-name">${msg.file_name || '文件'}</div>
-                  <button class="download-btn" onclick="window.open('${msg.file_url}')">下载</button>
-                </div>`;
+        html += '<div class="file-card">' +
+                  '<div class="file-name">' + (msg.file_name || '文件') + '</div>' +
+                  '<button class="download-btn" onclick="window.open(\'' + msg.file_url + '\')">下载</button>' +
+                '</div>';
       }
       
       // 消息操作按钮
-      html += `<div class="msg-actions">
-                <button onclick="startReply('${msg.id}','${msg.content||''}','${senderNick}')">回复</button>
-                <button onclick="doForward('${msg.id}',true,'${msg.content||''}','${msg.file_url||''}','${senderNick}')">转发</button>
-              </div></div>`;
+      html += '<div class="msg-actions">' +
+                '<button onclick="startReply(\'' + msg.id + '\',\'' + (msg.content||'') + '\',\'' + senderNick + '\')">回复</button>' +
+                '<button onclick="doForward(\'' + msg.id + '\',true,\'' + (msg.content||'') + '\',\'' + (msg.file_url||'') + '\',\'' + senderNick + '\')">转发</button>' +
+              '</div></div>';
     }
 
     container.innerHTML = html;
@@ -968,12 +964,12 @@ document.getElementById("fileInput").addEventListener("change", async e=>{
 
   try {
     // 生成唯一文件名
-    const fileName = `${myId}_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9_\-\.]+/g, '_')}`;
+    const fileName = myId + "_" + Date.now() + "_" + file.name.replace(/[^a-zA-Z0-9_\-\.]+/g, '_');
     
     // 上传文件到Supabase Storage
     const { error: uploadError } = await supabaseClient.storage
       .from("uploads")
-      .upload(`chat/${fileName}`, file, {
+      .upload("chat/" + fileName, file, {
         cacheControl: '3600',
         upsert: false
       });
@@ -983,7 +979,7 @@ document.getElementById("fileInput").addEventListener("change", async e=>{
     // 获取文件公网链接
     const { data: urlData } = supabaseClient.storage
       .from("uploads")
-      .getPublicUrl(`chat/${fileName}`);
+      .getPublicUrl("chat/" + fileName);
     const fileUrl = urlData.publicUrl;
 
     // 发送文件消息
@@ -1018,12 +1014,12 @@ document.getElementById("fileInput").addEventListener("change", async e=>{
     } else {
       alert("请先选择聊天对象");
       // 删除已上传的文件
-      await supabaseClient.storage.from("uploads").remove([`chat/${fileName}`]);
+      await supabaseClient.storage.from("uploads").remove(["chat/" + fileName]);
     }
 
   } catch (e) {
     console.error("发送文件失败:", e);
-    alert(`文件发送失败：${e.message || '请重试'}`);
+    alert("文件发送失败：" + (e.message || '请重试'));
   }
   
   // 清空文件选择
